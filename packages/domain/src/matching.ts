@@ -34,6 +34,7 @@ export interface CandidateRecord {
 export interface PassRecord { sourceDogId: string; targetDogId: string; passedAt: string }
 export interface InterestRecord {
   id: string; sourceDogId: string; targetDogId: string; strength: InterestStrength; status: InterestStatus;
+  cooldownUntil?: string | undefined;
   createdAt: string; updatedAt: string;
 }
 export interface ConnectionRecord {
@@ -285,10 +286,17 @@ export class InterestService {
     if (source.ownerId === target.ownerId) throw new AppError("VALIDATION_ERROR", "Both dogs share the same owner.");
     if (target.sex === source.sex) throw new AppError("CONFLICT", "These dogs cannot form a breeding match.");
 
-    // Duplicate active interest prevention.
+    // Duplicate active interest prevention. Re-interest after a decline is allowed once
+    // the cooldown lapses (docs/product/07 §12 as amended: 5-minute testing default).
     for (const existing of await this.repo.listInterestsBySource(sourceDogId)) {
       if (existing.targetDogId === targetDogId && existing.status === "ACTIVE") throw new AppError("CONFLICT", "An active interest already exists.");
-      if (existing.targetDogId === targetDogId && existing.status === "DECLINED") throw new AppError("CONFLICT", "Re-interest after a decline is not available yet."); // P0 rule (docs/product/07 §12)
+      if (existing.targetDogId === targetDogId && existing.status === "DECLINED") {
+        const cooldownEnd = existing.cooldownUntil ? Date.parse(existing.cooldownUntil) : Number.NaN;
+        if (Number.isFinite(cooldownEnd) && cooldownEnd > this.now().getTime()) {
+          const minutes = Math.ceil((cooldownEnd - this.now().getTime()) / 60000);
+          throw new AppError("CONFLICT", `This candidate declined interest recently. You can try again in about ${minutes} minute${minutes === 1 ? "" : "s"}.`);
+        }
+      }
     }
     const nowIso = this.now().toISOString();
     const interest = await this.repo.createInterest({ id: crypto.randomUUID(), sourceDogId, targetDogId, strength, status: "ACTIVE", createdAt: nowIso, updatedAt: nowIso });
@@ -322,7 +330,10 @@ export class InterestService {
     const dog = await this.repo.getDog(dogId);
     if (!dog || dog.ownerId !== ownerId) throw new AppError("FORBIDDEN", "You do not have access to this interest.");
     if (!from.includes(interest.status)) throw new AppError("CONFLICT", `Only ${from.join("/").toLowerCase()} interests can be ${next.toLowerCase()}.`);
-    return this.repo.updateInterest(interest.id, { status: next, updatedAt: this.now().toISOString() });
+    // Decline stamps a re-interest cooldown (5-minute testing default per owner decision).
+    const update: Partial<InterestRecord> = { status: next, updatedAt: this.now().toISOString() };
+    if (next === "DECLINED") update.cooldownUntil = new Date(this.now().getTime() + 5 * 60 * 1000).toISOString();
+    return this.repo.updateInterest(interest.id, update);
   }
 }
 

@@ -173,15 +173,23 @@ describe("interest lifecycle", () => {
     await expect(service.send("owner-a", "dog-a", "dog-b", "STRONG")).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(service.send("owner-a", "dog-a", "dog-a", "NORMAL")).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
-  it("blocks re-interest after a decline in P0 and allows withdrawal of an active interest", async () => {
+  it("blocks re-interest during cooldown after a decline, allows it once lapsed; withdrawal works", async () => {
     const repo = setup();
-    const service = new InterestService(repo, () => new Date(nowIso));
+    let clock = new Date(nowIso).getTime();
+    const now = () => new Date(clock);
+    const service = new InterestService(repo, now);
     const sent = await service.send("owner-a", "dog-a", "dog-b", "NORMAL");
     await service.decline("owner-b", sent.interest.id);
-    await expect(service.send("owner-a", "dog-a", "dog-b", "NORMAL")).rejects.toMatchObject({ code: "CONFLICT" });
+    // During cooldown (5 min default): blocked with a wait hint.
+    await expect(service.send("owner-a", "dog-a", "dog-b", "NORMAL")).rejects.toThrow(/cooldown|minute/);
+    // After cooldown lapses: allowed again.
+    clock += 6 * 60 * 1000;
+    const retry = await new InterestService(repo, now).send("owner-a", "dog-a", "dog-b", "NORMAL");
+    expect(retry.interest.status).toBe("ACTIVE");
+    // Withdrawal still works on a fresh pair.
     const fresh = setup();
-    const second = await new InterestService(fresh, () => new Date(nowIso)).send("owner-a", "dog-a", "dog-b", "NORMAL");
-    await new InterestService(fresh, () => new Date(nowIso)).withdraw("owner-a", second.interest.id);
+    const second = await new InterestService(fresh, now).send("owner-a", "dog-a", "dog-b", "NORMAL");
+    await new InterestService(fresh, now).withdraw("owner-a", second.interest.id);
     expect(fresh.interests.get("dog-a->dog-b")!.status).toBe("WITHDRAWN");
   });
   it("creates exactly one connection when interests become reciprocal", async () => {
