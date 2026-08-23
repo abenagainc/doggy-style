@@ -129,7 +129,7 @@ export function Discover() {
         <section data-testid="discovery-exhausted">
           <EmptyState>You've reviewed every available candidate for this dog.</EmptyState>
           <p>
-            <a href="#passed" onClick={(event) => { event.preventDefault(); setMessage(null); setScreen("passed"); }} style={{ marginRight: 16 }}>Review passed dogs</a>
+            <a href="#passed" onClick={(event) => { event.preventDefault(); setMessage(null); setScreen("passed"); }} style={{ marginRight: 16 }}>View passed dogs</a>
             <a href="#prefs" onClick={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("goto-tab", { detail: "dogs" })); }}>Edit preferences (in My Dogs)</a>
           </p>
         </section>

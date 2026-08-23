@@ -335,7 +335,7 @@ function Interests({ activeDogId }: { activeDogId: string }) {
       <h2>Interests for your active dog</h2>
       {note && <p role="status">{note}</p>}
       {errorText && <p role="alert">{errorText}</p>}
-      <p><a href="#passed" onClick={(event) => { event.preventDefault(); setShowPassed(!showPassed); }}>Review passed dogs</a></p>
+      <p><a href="#passed" onClick={(event) => { event.preventDefault(); setShowPassed(!showPassed); }}>View passed dogs</a></p>
       {showPassed && <PassedDogs activeDogId={activeDogId} />}
       <h3>Received ({(views?.received ?? []).length})</h3>
       {(views?.received ?? []).length === 0 ? <EmptyState>No pending received interests.</EmptyState> : (
