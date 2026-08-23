@@ -15,24 +15,20 @@ function ageYears(dateOfBirth: string) { return Math.floor((Date.now() - new Dat
 
 /** Loads the ranked eligible candidate feed for the given active dog (server-authoritative via RPC). */
 export async function loadFeed(activeDogId: string): Promise<{ candidates: CandidateCard[]; exhausted: boolean }> {
-  const [{ data: activeDog }, { data: dogs, error: rpcError }, { data: prefs }, { data: photos }] = await Promise.all([
+  const [{ data: activeDog }, { data: dogs, error: rpcError }, { data: prefs }] = await Promise.all([
     supabase.from("dogs").select("*").eq("id", activeDogId).single(),
     supabase.rpc("eligible_candidates", { p_source_dog_id: activeDogId }),
     supabase.from("dog_matching_preferences").select("*").eq("dog_id", activeDogId).maybeSingle(),
-    supabase.from("dog_photos").select("dog_id,storage_path").order("sort_order"),
   ]);
   if (!activeDog) throw new AppError("NOT_FOUND", "Active dog not found.");
   if (rpcError) throw new AppError("UNAVAILABLE", "Feed is unavailable — has the discovery RPC migration been applied?");
-  const photoBydog = new Map<string, string>();
-  for (const photo of photos as { dog_id: string; storage_path: string }[]) { if (!photoBydog.has(photo.dog_id)) photoBydog.set(photo.dog_id, photo.storage_path); }
   const origin = parseLocation(activeDog.location);
   const required = prefs?.required_breeds ?? [];
   const preferred = new Set((prefs?.preferred_breeds ?? []).map((b: string) => b.toLowerCase()));
 
   type Scored = CandidateCard & { score: number };
   const scored: Scored[] = [];
-  for (const row of dogs as unknown as DogRow[]) {
-    if ((photoBydog.get(row.id) ?? null) === null) continue; // matching-ready requires >=1 photo
+  for (const row of dogs as unknown as Array<DogRow & { photo_path: string | null }>) {
     if (row.sex === activeDog.sex) continue;
     if (required.length > 0 && !required.includes(row.breed)) continue;
     const candidateOrigin = parseLocation((row as unknown as { location: string | null }).location);
@@ -41,8 +37,7 @@ export async function loadFeed(activeDogId: string): Promise<{ candidates: Candi
     let score = 0;
     if (preferred.has(row.breed.toLowerCase())) score += 40;
     if (km !== null) score += Math.max(0, 30 - km / 4);
-    score += Math.min(5, (photoBydog.get(row.id) ? 3 : 0));
-    scored.push({ id: row.id, name: row.name, breed: row.breed, sex: row.sex, ageYears: ageYears(row.date_of_birth), distanceBand: km !== null ? computeBand(km) : "Distance unknown", verification: "Verified owner", photoPath: photoBydog.get(row.id) ?? null, score });
+    scored.push({ id: row.id, name: row.name, breed: row.breed, sex: row.sex, ageYears: ageYears(row.date_of_birth), distanceBand: km !== null ? computeBand(km) : "Distance unknown", verification: "Verified owner", photoPath: row.photo_path ?? null, score });
   }
   scored.sort((a, b) => b.score - a.score);
   return { candidates: scored.map(({ score, ...card }) => ({ ...card })), exhausted: scored.length === 0 };

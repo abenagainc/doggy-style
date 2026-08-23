@@ -11,10 +11,12 @@ returns table (
   sex public.dog_sex,
   date_of_birth date,
   breed text,
-  location text
+  location text,
+  photo_path text
 )
 language sql stable security definer set search_path = public as $$
-  select d.id, d.owner_id, d.name, d.sex, d.date_of_birth, d.breed, d.location
+  select d.id, d.owner_id, d.name, d.sex, d.date_of_birth, d.breed, d.location,
+    (select p.storage_path from public.dog_photos p where p.dog_id = d.id order by p.sort_order, p.created_at limit 1) as photo_path
   from public.dogs d
   join public.owners o on o.id = d.owner_id
   where d.id <> p_source_dog_id
