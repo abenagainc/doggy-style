@@ -36,10 +36,38 @@ export function Connections() {
           <li key={row.id}>
             <strong>{row.otherDogName}</strong> — <span data-status={row.status}>{row.status.toLowerCase()}</span>{" "}
             <button onClick={() => setView({ kind: "chat", connectionId: row.id })}>Open conversation</button>
+            {row.status !== "CLOSED" && <RejectButton connectionId={row.id} dogName={row.otherDogName} onDone={() => void load()} />}
           </li>
         ))}
       </ul>
     </main>
+  );
+}
+
+function RejectButton({ connectionId, dogName, onDone }: { connectionId: string; dogName: string; onDone: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  const sever = async () => {
+    setBusy(true); setErrorText(null);
+    try {
+      await endConnection(connectionId);
+      setBusy(false);
+      onDone();
+    } catch (caught) { setErrorText(describe(caught)); setBusy(false); }
+  };
+
+  if (!confirming) {
+    return <button onClick={() => setConfirming(true)}>Reject</button>;
+  }
+  return (
+    <span>
+      {" "}Close your connection with {dogName}? The conversation becomes read-only and cannot be reopened.{" "}
+      <button disabled={busy} onClick={() => void sever()}>{busy ? "…" : "Yes, close it"}</button>{" "}
+      <button disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
+      {errorText && <span role="alert"> {errorText}</span>}
+    </span>
   );
 }
 
@@ -117,14 +145,37 @@ function Chat({ connectionId, onBack }: { connectionId: string; onBack: () => vo
         </section>
       )}
       {status === "PROCEEDING" && <p role="status">🐾 Both owners confirmed proceeding.</p>}
-      {!readOnly && <button onClick={() => void end()}>End connection</button>}
+      {!readOnly && <EndConnectionButton connectionId={connectionId} onEnded={() => { setStatus("CLOSED"); setNote("Connection ended. The conversation is now read-only."); }} />}
       <SafetyPanel connectionId={connectionId} onNote={setNote} />
     </main>
   );
 }
 
-function SafetyPanel({ connectionId, onNote }: { connectionId: string; onNote: (note: string) => void }) {
-  const [open, setOpen] = useState<"none" | "report" | "block">("none");
+function EndConnectionButton({ connectionId, onEnded }: { connectionId: string; onEnded: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  if (!confirming) return <button onClick={() => setConfirming(true)}>End connection</button>;
+  return (
+    <span>
+      {" "}End this connection? The conversation becomes read-only permanently and cannot be reopened.{" "}
+      <button
+        disabled={busy}
+        onClick={() => {
+          setBusy(true); setErrorText(null);
+          endConnection(connectionId).then(onEnded).catch((caught) => setErrorText(describe(caught))).finally(() => setBusy(false));
+        }}
+      >
+        {busy ? "…" : "Yes, end it"}
+      </button>{" "}
+      <button disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
+      {errorText && <span role="alert"> {errorText}</span>}
+    </span>
+  );
+}
+
+function SafetyPanel({ connectionId, onNote }: { connectionId: string; onNote: (note: string) => void }) {  const [open, setOpen] = useState<"none" | "report" | "block">("none");
   const [reason, setReason] = useState<string>(REPORT_REASONS[0]);
   const [details, setDetails] = useState("");
   const [error, setError] = useState<string | null>(null);
