@@ -6,3 +6,4 @@ coverage
 !.env.example
 supabase/.temp
 check-auth.mjs
+.DS_Store
