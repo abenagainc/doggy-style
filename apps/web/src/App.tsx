@@ -32,6 +32,13 @@ function Shell() {
 
   useEffect(() => { void refreshActiveDog(); }, [refreshActiveDog]);
 
+  // Cross-component navigation: "Edit preferences" from Discover's exhausted state.
+  useEffect(() => {
+    const handler = (event: Event) => { const detail = (event as CustomEvent<string>).detail; if (detail === "dogs") setTab("dogs"); };
+    window.addEventListener("goto-tab", handler);
+    return () => window.removeEventListener("goto-tab", handler);
+  }, []);
+
   const needsDog = tab !== "dogs" && tab !== "account" && !activeDogId;
   return (
     <main>

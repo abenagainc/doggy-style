@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AppError } from "@doggy-style/domain";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { restoreActiveDog } from "./dogs.js";
-import { photoSignedUrl } from "./dogsData.js";
+import { listPassedDogs, reconsiderPassed, photoSignedUrl } from "./dogsData.js";
 import { declineInterest, listReceivedInterests, loadFeed, passCandidate, sendInterest, type CandidateCard, type ReceivedInterest } from "./discovery.js";
 
 function CandidatePhoto({ path }: { path: string | null }) {
@@ -13,7 +13,7 @@ function CandidatePhoto({ path }: { path: string | null }) {
     : <div style={{ width: 280, height: 180, background: "#eee", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>🐶</div>;
 }
 
-type Screen = "loading" | "error" | "no-active-dog" | "feed" | "received";
+type Screen = "loading" | "error" | "no-active-dog" | "feed" | "received" | "passed";
 
 export function Discover() {
   const [screen, setScreen] = useState<Screen>("loading");
@@ -57,6 +57,16 @@ export function Discover() {
   if (screen === "loading") return <LoadingState />;
   if (screen === "error") return <ErrorState message={message ?? "Something went wrong."} retry={() => void load()} />;
   if (screen === "no-active-dog") return <EmptyState>Create a dog and complete its profile to start discovering candidates.</EmptyState>;
+  if (screen === "passed" && activeDogId) {
+    return (
+      <main>
+        <h1>Discover</h1>
+        <p><a href="#back" onClick={(event) => { event.preventDefault(); setScreen("feed"); }}>← Back to discovery</a></p>
+        {message && <p role="status">{message}</p>}
+        <PassedDogsList activeDogId={activeDogId} onChanged={() => void load()} />
+      </main>
+    );
+  }
 
   return (
     <main>
@@ -79,9 +89,13 @@ export function Discover() {
           <button onClick={() => void act(() => sendInterest(activeDogId!, current.id, "STRONG"), "Strong Interest sent.")}>Strong Interest</button>
         </article>
       ) : (
-        <EmptyState>
-          You've reviewed every available candidate. Review passed dogs or edit preferences from My Dogs to widen your search.
-        </EmptyState>
+        <section data-testid="discovery-exhausted">
+          <EmptyState>You've reviewed every available candidate for this dog.</EmptyState>
+          <p>
+            <a href="#passed" onClick={(event) => { event.preventDefault(); setMessage(null); setScreen("passed"); }} style={{ marginRight: 16 }}>Review passed dogs</a>
+            <a href="#prefs" onClick={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("goto-tab", { detail: "dogs" })); }}>Edit preferences (in My Dogs)</a>
+          </p>
+        </section>
       )}
       {received && (
         <section data-testid="received-interests">
@@ -106,4 +120,52 @@ export function Discover() {
 
 function describe(caught: unknown): string {
   return caught instanceof AppError ? caught.message : "Something went wrong. Please try again.";
+}
+
+function PassedDogsList({ activeDogId, onChanged }: { activeDogId: string; onChanged: () => void }) {
+  const [state, setState] = useState<"loading" | "error" | "ready">("loading");
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [list, setList] = useState<Array<{ id: string; name: string; breed: string; sex: string; photoPath: string | null }> | null>(null);
+
+  const load = useCallback(async () => {
+    setState("loading"); setErrorText(null);
+    try { setList(await listPassedDogs(activeDogId)); setState("ready"); }
+    catch (caught) { setErrorText(describe(caught)); setState("error"); }
+  }, [activeDogId]);
+  useEffect(() => { void load(); }, [load]);
+
+  const reconsider = async (targetDogId: string) => {
+    try {
+      await reconsiderPassed(activeDogId, targetDogId);
+      setNote("Candidate restored to your discovery feed.");
+      await load();
+      onChanged();
+    } catch (caught) { setErrorText(describe(caught)); }
+  };
+
+  if (state === "loading") return <LoadingState />;
+  if (state === "error") return <ErrorState message={errorText ?? "Something went wrong."} retry={() => void load()} />;
+  return (
+    <section data-testid="passed-dogs">
+      <h2>Passed dogs</h2>
+      {note && <p role="status">{note}</p>}
+      {errorText && <p role="alert">{errorText}</p>}
+      {(list ?? []).length === 0 ? (
+        <EmptyState>You haven't passed any candidates for this dog.</EmptyState>
+      ) : (
+        <ul>
+          {(list ?? []).map((entry) => (
+            <li key={entry.id} style={{ marginBottom: 12 }}>
+              <CandidatePhoto path={entry.photoPath} />
+              <div>
+                <strong>{entry.name}</strong> · {entry.breed} · {entry.sex.toLowerCase()}{" "}
+                <button onClick={() => void reconsider(entry.id)}>Reconsider — show in feed again</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
