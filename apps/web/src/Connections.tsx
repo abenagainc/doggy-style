@@ -8,11 +8,16 @@ import { blockOwner, otherOwnerInConnection, REPORT_REASONS, submitReport } from
 type View = { kind: "loading" } | { kind: "error"; message: string } | { kind: "empty" }
   | { kind: "list" } | { kind: "chat"; connectionId: string };
 
-export function Connections({ activeDogId }: { activeDogId?: string | null }) {
+export function Connections({ activeDogId, openConnectionId, onOpened }: { activeDogId?: string | null; openConnectionId?: string | null; onOpened?: () => void }) {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [items, setItems] = useState<Awaited<ReturnType<typeof listConnections>> | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [myDogNames, setMyDogNames] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    if (openConnectionId) setView({ kind: "chat", connectionId: openConnectionId });
+    onOpened?.();
+  }, [openConnectionId, onOpened]);
 
   useEffect(() => {
     dogsData.listMyDogs().then((dogs) => setMyDogNames(new Map(dogs.map((d) => [d.id, d.name])))).catch(() => undefined);

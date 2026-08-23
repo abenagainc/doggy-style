@@ -7,6 +7,7 @@ import { logout } from "./auth.js";
 import { Discover } from "./Discover.js";
 import { Connections } from "./Connections.js";
 import { AuthGate } from "./AuthGate.js";
+import { ProfileSectionsEditor } from "./ProfileSections.js";
 import * as dogsData from "./dogsData.js";
 import { photoSignedUrl } from "./dogsData.js";
 import * as interestsData from "./interestsData.js";
@@ -39,6 +40,17 @@ function Shell() {
     return () => window.removeEventListener("goto-tab", handler);
   }, []);
 
+  // "Start conversation" from the mutual-interest celebration.
+  const [pendingConnectionId, setPendingConnectionId] = useState<string | null>(null);
+  useEffect(() => {
+    const handler = (event: Event) => {
+      setTab("connections");
+      setPendingConnectionId((event as CustomEvent<string>).detail);
+    };
+    window.addEventListener("open-connection", handler);
+    return () => window.removeEventListener("open-connection", handler);
+  }, []);
+
   const needsDog = tab !== "dogs" && tab !== "account" && !activeDogId;
   return (
     <main>
@@ -60,7 +72,7 @@ function Shell() {
       ) : tab === "interests" && activeDogId ? (
         <Interests activeDogId={activeDogId} />
       ) : tab === "connections" && activeDogId ? (
-        <Connections activeDogId={activeDogId} />
+        <Connections activeDogId={activeDogId} openConnectionId={pendingConnectionId} onOpened={() => setPendingConnectionId(null)} />
       ) : (
         <Account />
       )}
@@ -209,6 +221,8 @@ function DogEditor({ dog, onChanged }: { dog: dogsData.DogRow; onChanged: () => 
       )}
       <input type="file" accept="image/*" aria-label="Add photo" disabled={busy}
         onChange={(event) => { const file = event.target.files?.[0]; if (file) void run(() => dogsData.uploadPhoto(dog.id, file), "Photo added."); }} />
+
+      <ProfileSectionsEditor dogId={dog.id} />
 
       <h4>Availability</h4>
       <button disabled={busy} onClick={() => void run(() => dogsData.setAvailability(dog.id, dog.availability_status === "AVAILABLE" ? "UNAVAILABLE" : "AVAILABLE"), dog.availability_status === "AVAILABLE" ? "Marked unavailable." : "Marked available.")}>

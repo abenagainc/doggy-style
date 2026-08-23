@@ -4,6 +4,7 @@ import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { restoreActiveDog } from "./dogs.js";
 import { listPassedDogs, reconsiderPassed, photoSignedUrl } from "./dogsData.js";
 import { declineInterest, listReceivedInterests, loadFeed, passCandidate, sendInterest, type CandidateCard, type ReceivedInterest } from "./discovery.js";
+import { CandidateDetail } from "./CandidateDetail.js";
 
 function CandidatePhoto({ path }: { path: string | null }) {
   const [url, setUrl] = useState<string>("");
@@ -13,7 +14,7 @@ function CandidatePhoto({ path }: { path: string | null }) {
     : <div style={{ width: 280, height: 180, background: "#eee", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>🐶</div>;
 }
 
-type Screen = "loading" | "error" | "no-active-dog" | "feed" | "received" | "passed";
+type Screen = "loading" | "error" | "no-active-dog" | "feed" | "received" | "passed" | "detail";
 
 export function Discover() {
   const [screen, setScreen] = useState<Screen>("loading");
@@ -22,6 +23,7 @@ export function Discover() {
   const [current, setCurrent] = useState<CandidateCard | null>(null);
   const [received, setReceived] = useState<ReceivedInterest[] | null>(null);
   const [activeDogId, setActiveDogId] = useState<string | null>(null);
+  const [mutual, setMutual] = useState<{ dogName: string; connectionId: string } | null>(null);
 
   const load = useCallback(async () => {
     setScreen("loading"); setMessage(null); setCandidates(null); setCurrent(null);
@@ -43,6 +45,17 @@ export function Discover() {
     setMessage(null);
     try {
       await action();
+      // Mutual interest? The send may have created a connection — celebrate it.
+      if (successNote.includes("sent")) {
+        const { findConnectionFor } = await import("./interestsData.js");
+        const connectionId = await findConnectionFor(activeDogId, current.id);
+        if (connectionId) {
+          setMutual({ dogName: current.name, connectionId });
+          const next = (candidates ?? []).filter((entry) => entry.id !== current.id);
+          setCandidates(next); setCurrent(next[0] ?? null);
+          return;
+        }
+      }
       setMessage(successNote);
       const next = (candidates ?? []).filter((entry) => entry.id !== current.id);
       setCandidates(next); setCurrent(next[0] ?? null);
@@ -57,6 +70,23 @@ export function Discover() {
   if (screen === "loading") return <LoadingState />;
   if (screen === "error") return <ErrorState message={message ?? "Something went wrong."} retry={() => void load()} />;
   if (screen === "no-active-dog") return <EmptyState>Create a dog and complete its profile to start discovering candidates.</EmptyState>;
+  if (mutual) {
+    return (
+      <main>
+        <div data-testid="mutual-interest" style={{ textAlign: "center", padding: "48px 16px" }}>
+          <div style={{ fontSize: 64 }}>🎉🐶🎉</div>
+          <h1>It's a match!</h1>
+          <p><strong>{mutual.dogName}</strong>'s owner is interested in your dog too!</p>
+          <p>
+            <button onClick={() => { window.dispatchEvent(new CustomEvent("open-connection", { detail: mutual.connectionId })); setMutual(null); }}>
+              Start conversation
+            </button>
+          </p>
+          <p><a href="#keep" onClick={(event) => { event.preventDefault(); setMutual(null); setScreen("feed"); }}>Keep discovering</a></p>
+        </div>
+      </main>
+    );
+  }
   if (screen === "passed" && activeDogId) {
     return (
       <main>
@@ -74,20 +104,27 @@ export function Discover() {
       <p><a href="#received" onClick={(event) => { event.preventDefault(); void showReceived(); }}>Review received interests</a></p>
       {message && <p role="status">{message}</p>}
       {current ? (
-        <article data-testid="candidate-card">
-          <CandidatePhoto path={current.photoPath} />
-          <h2>{current.name}</h2>
-          <dl>
-            <dt>Breed</dt><dd>{current.breed}</dd>
-            <dt>Sex</dt><dd>{current.sex}</dd>
-            <dt>Age</dt><dd>{current.ageYears} years</dd>
-            <dt>Distance</dt><dd>{current.distanceBand}</dd>
-            <dt>Trust</dt><dd>{current.verification}</dd>
-          </dl>
-          <button onClick={() => void act(() => passCandidate(activeDogId!, current.id), "Passed.")}>Pass</button>
-          <button onClick={() => void act(() => sendInterest(activeDogId!, current.id, "NORMAL"), "Interest sent.")}>Interested</button>
-          <button onClick={() => void act(() => sendInterest(activeDogId!, current.id, "STRONG"), "Strong Interest sent.")}>Strong Interest</button>
-        </article>
+        screen === "detail" && activeDogId ? (
+          <CandidateDetail viewerDogId={activeDogId} candidateDogId={current.id} onBack={() => setScreen("feed")} />
+        ) : (
+          <article data-testid="candidate-card">
+            <a href="#detail" onClick={(event) => { event.preventDefault(); setScreen("detail"); }} style={{ display: "block" }}>
+              <CandidatePhoto path={current.photoPath} />
+            </a>
+            <h2>{current.name}</h2>
+            <dl>
+              <dt>Breed</dt><dd>{current.breed}</dd>
+              <dt>Sex</dt><dd>{current.sex}</dd>
+              <dt>Age</dt><dd>{current.ageYears} years</dd>
+              <dt>Distance</dt><dd>{current.distanceBand}</dd>
+              <dt>Trust</dt><dd>{current.verification}</dd>
+            </dl>
+            <p><a href="#profile" onClick={(event) => { event.preventDefault(); setScreen("detail"); }}>View full profile →</a></p>
+            <button onClick={() => void act(() => passCandidate(activeDogId!, current.id), "Passed.")}>Pass</button>
+            <button onClick={() => void act(() => sendInterest(activeDogId!, current.id, "NORMAL"), "Interest sent.")}>Interested</button>
+            <button onClick={() => void act(() => sendInterest(activeDogId!, current.id, "STRONG"), "Strong Interest sent.")}>Strong Interest</button>
+          </article>
+        )
       ) : (
         <section data-testid="discovery-exhausted">
           <EmptyState>You've reviewed every available candidate for this dog.</EmptyState>
