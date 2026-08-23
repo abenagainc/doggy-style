@@ -3,30 +3,16 @@ import { supabase } from "./supabase.js";
 
 async function currentOwnerId() { const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new AppError("UNAUTHORIZED", "Please sign in."); return user.id; }
 
-interface ConnectionRow {
-  id: string; status: string; lower_dog_id: string; higher_dog_id: string;
-}
+export interface MyConnection { id: string; status: string; myDogId: string; otherDogId: string; otherDogName: string; createdAt: string }
 
-export async function listConnections(): Promise<(ConnectionRow & { otherDogName: string })[]> {
-  const ownerId = await currentOwnerId();
-  const { data: dogs } = await supabase.from("dogs").select("id,name").eq("owner_id", ownerId);
-  const myDogIds = new Set((dogs ?? []).map((d: { id: string }) => d.id));
-  const [{ data: lowerLinks }, { data: higherLinks }] = await Promise.all([
-    supabase.from("connections").select("id,status,lower_dog_id,higher_dog_id,dogs!connections_lower_dog_id_fkey(name)").in("lower_dog_id", [...myDogIds]),
-    supabase.from("connections").select("id,status,lower_dog_id,higher_dog_id,dogs!connections_higher_dog_id_fkey(name)").in("higher_dog_id", [...myDogIds]),
-  ]);
-  const byId = new Map<string, ConnectionRow & { otherDogName: string }>();
-  for (const row of (lowerLinks ?? []) as unknown as { id: string; status: string; lower_dog_id: string; higher_dog_id: string; dogs: { name: string } | { name: string }[] }[]) {
-    const name = Array.isArray(row.dogs) ? row.dogs[0]?.name ?? "Unknown" : row.dogs.name;
-    byId.set(row.id, { ...row, otherDogName: name });
-  }
-  for (const row of (higherLinks ?? []) as unknown as typeof lowerLinks & any[]) {
-    if (!row) continue;
-    const name = Array.isArray(row.dogs) ? row.dogs[0]?.name ?? "Unknown" : row.dogs.name;
-    byId.set(row.id, { id: row.id, status: row.status, lower_dog_id: row.lower_dog_id, higher_dog_id: row.higher_dog_id, otherDogName: name });
-  }
-  if (byId.size === 0 && !(lowerLinks || higherLinks)) throw new AppError("UNAVAILABLE", "We couldn't load your connections.");
-  return [...byId.values()];
+/** Server-side list: shows the OTHER party's dog name (RLS hides their rows from the client). */
+export async function listConnections(): Promise<MyConnection[]> {
+  const { data, error } = await supabase.rpc("list_my_connections");
+  if (error) throw new AppError("UNAVAILABLE", "We couldn't load your connections. Has migration 00800 been applied?");
+  return (data ?? []).map((row: { id: string; status: string; my_dog_id: string; other_dog_id: string; other_dog_name: string; created_at: string }) => ({
+    id: row.id, status: row.status, myDogId: row.my_dog_id, otherDogId: row.other_dog_id,
+    otherDogName: row.other_dog_name ?? "Unknown", createdAt: row.created_at,
+  }));
 }
 
 async function conversationFor(connectionId: string): Promise<string> {
