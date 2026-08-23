@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { supabase } from "./supabase.js";
 import { restoreActiveDog } from "./dogs.js";
+import { Discover } from "./Discover.js";
 
 type DogSummary = { id: string; name: string; archived_at: string | null; profile_status: string; availability_status: string };
 
@@ -12,5 +13,5 @@ export function App() {
   if (error) return <ErrorState message={error} retry={() => void load()} />;
   if (!dogs) return <LoadingState />;
   if (!dogs.length) return <EmptyState>You have no dogs yet. Add your first dog to get started.</EmptyState>;
-  return <main><h1>Your dogs</h1><ul>{dogs.map((dog) => <li key={dog.id}>{dog.name} — {dog.profile_status.toLowerCase()}, {dog.availability_status.toLowerCase()}</li>)}</ul></main>;
+  return <main><h1>Your dogs</h1><ul>{dogs.map((dog) => <li key={dog.id}>{dog.name} — {dog.profile_status.toLowerCase()}, {dog.availability_status.toLowerCase()}</li>)}</ul><Discover /></main>;
 }
