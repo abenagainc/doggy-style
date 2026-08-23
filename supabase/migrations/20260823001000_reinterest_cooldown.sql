@@ -29,7 +29,9 @@ create trigger interests_stamp_cooldown before update of status on public.intere
 for each row when (new.status = 'DECLINED') execute function public.stamp_interest_cooldown();
 
 -- Eligibility RPC: hide declined candidates until their cooldown expires, then allow again.
-create or replace function public.eligible_candidates(p_source_dog_id uuid)
+-- (drop first: the return type changed since 00500, and CREATE OR REPLACE cannot alter it)
+drop function if exists public.eligible_candidates(uuid);
+create function public.eligible_candidates(p_source_dog_id uuid)
 returns table (
   id uuid,
   owner_id uuid,
