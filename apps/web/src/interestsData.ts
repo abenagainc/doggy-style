@@ -9,27 +9,35 @@ export interface InterestView {
   otherDogName: string; otherDogId: string; createdAt: string;
 }
 
+async function dogName(dogId: string): Promise<string> {
+  const { data } = await supabase.rpc("dog_public_name", { p_dog_id: dogId });
+  return (data as string | null) ?? "A dog";
+}
+
 export async function listInterests(activeDogId: string): Promise<{ received: InterestView[]; sent: InterestView[] }> {
   await currentOwnerId();
   const [receivedRes, sentRes] = await Promise.all([
-    supabase.from("interests").select("id,strength,created_at,source_dog_id,source:dogs!interests_source_dog_id_fkey(id,name)").eq("target_dog_id", activeDogId).eq("status", "ACTIVE"),
-    supabase.from("interests").select("id,strength,created_at,target_dog_id,target:dogs!interests_target_dog_id_fkey(id,name)").eq("source_dog_id", activeDogId).eq("status", "ACTIVE"),
+    supabase.from("interests").select("id,strength,created_at,source_dog_id,target_dog_id").eq("target_dog_id", activeDogId).eq("status", "ACTIVE"),
+    supabase.from("interests").select("id,strength,created_at,target_dog_id,source_dog_id").eq("source_dog_id", activeDogId).eq("status", "ACTIVE"),
   ]);
   if (receivedRes.error || sentRes.error) throw new AppError("UNAVAILABLE", "We couldn't load your interests.");
-  type Row = { id: string; strength: string; created_at: string };
-  const mapReceived = (rows: (Row & { source_dog_id: string; source: { id: string; name: string } | { id: string; name: string }[] })[]): InterestView[] =>
-    rows.map((row) => ({
-      id: row.id, direction: "received", strength: row.strength, otherDogId: row.source_dog_id,
-      otherDogName: Array.isArray(row.source) ? row.source[0]?.name ?? "Unknown" : row.source.name,
-      createdAt: row.created_at,
-    }));
-  const mapSent = (rows: (Row & { target_dog_id: string; target: { id: string; name: string } | { id: string; name: string }[] })[]): InterestView[] =>
-    rows.map((row) => ({
-      id: row.id, direction: "sent", strength: row.strength, otherDogId: row.target_dog_id,
-      otherDogName: Array.isArray(row.target) ? row.target[0]?.name ?? "Unknown" : row.target.name,
-      createdAt: row.created_at,
-    }));
-  return { received: mapReceived((receivedRes.data ?? []) as never), sent: mapSent((sentRes.data ?? []) as never) };
+  type Row = { id: string; strength: string; created_at: string; source_dog_id: string; target_dog_id: string };
+  // Resolve the other side's name via the public-name RPC (RLS hides other owners' dog rows).
+  const names = new Map<string, string>();
+  await Promise.all([...receivedRes.data ?? [], ...sentRes.data ?? []].map(async (row: Row) => {
+    const otherId = row.source_dog_id === activeDogId ? row.target_dog_id : row.source_dog_id;
+    if (!names.has(otherId)) names.set(otherId, await dogName(otherId));
+  }));
+  return {
+    received: ((receivedRes.data ?? []) as Row[]).map((row) => ({
+      id: row.id, direction: "received" as const, strength: row.strength,
+      otherDogId: row.source_dog_id, otherDogName: names.get(row.source_dog_id) ?? "A dog", createdAt: row.created_at,
+    })),
+    sent: ((sentRes.data ?? []) as Row[]).map((row) => ({
+      id: row.id, direction: "sent" as const, strength: row.strength,
+      otherDogId: row.target_dog_id, otherDogName: names.get(row.target_dog_id) ?? "A dog", createdAt: row.created_at,
+    })),
+  };
 }
 
 export async function declineInterest(interestId: string): Promise<void> {

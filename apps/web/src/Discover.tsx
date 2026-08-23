@@ -2,7 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import { AppError } from "@doggy-style/domain";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { restoreActiveDog } from "./dogs.js";
+import { photoSignedUrl } from "./dogsData.js";
 import { declineInterest, listReceivedInterests, loadFeed, passCandidate, sendInterest, type CandidateCard, type ReceivedInterest } from "./discovery.js";
+
+function CandidatePhoto({ path }: { path: string | null }) {
+  const [url, setUrl] = useState<string>("");
+  useEffect(() => { if (path) void photoSignedUrl(path).then(setUrl); }, [path]);
+  return url
+    ? <img src={url} alt="Candidate dog" style={{ maxWidth: 280, maxHeight: 280, borderRadius: 8 }} />
+    : <div style={{ width: 280, height: 180, background: "#eee", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>🐶</div>;
+}
 
 type Screen = "loading" | "error" | "no-active-dog" | "feed" | "received";
 
@@ -56,6 +65,7 @@ export function Discover() {
       {message && <p role="status">{message}</p>}
       {current ? (
         <article data-testid="candidate-card">
+          <CandidatePhoto path={current.photoPath} />
           <h2>{current.name}</h2>
           <dl>
             <dt>Breed</dt><dd>{current.breed}</dd>

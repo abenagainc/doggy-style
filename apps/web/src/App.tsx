@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { AppError, dogSexes, type AvailabilityStatus } from "@doggy-style/domain";
+import { AppError, dogSexes } from "@doggy-style/domain";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { supabase } from "./supabase.js";
 import { restoreActiveDog } from "./dogs.js";
+import { logout } from "./auth.js";
 import { Discover } from "./Discover.js";
 import { Connections } from "./Connections.js";
 import { AuthGate } from "./AuthGate.js";
 import * as dogsData from "./dogsData.js";
+import { photoSignedUrl } from "./dogsData.js";
 import * as interestsData from "./interestsData.js";
 
-type Tab = "dogs" | "discover" | "interests" | "connections";
+type Tab = "dogs" | "discover" | "interests" | "connections" | "account";
 
 export function App() {
   return <AuthGate><Shell /></AuthGate>;
@@ -30,17 +32,17 @@ function Shell() {
 
   useEffect(() => { void refreshActiveDog(); }, [refreshActiveDog]);
 
-  const needsDog = tab !== "dogs" && !activeDogId;
+  const needsDog = tab !== "dogs" && tab !== "account" && !activeDogId;
   return (
     <main>
       <header>
         <h1>Doggy Style 🐾</h1>
+        <DogSwitcher activeDogId={activeDogId} onSwitched={() => { void refreshActiveDog(); }} />
         <nav role="tablist">
-          {(["dogs", "discover", "interests", "connections"] as const).map((entry) => (
+          {(["dogs", "discover", "interests", "connections", "account"] as const).map((entry) => (
             <button key={entry} role="tab" aria-selected={tab === entry} onClick={() => setTab(entry)}>{(entry[0] ?? "").toUpperCase() + entry.slice(1)}</button>
           ))}
         </nav>
-        {activeDogId && <p>Active dog: <strong>{activeDogName}</strong></p>}
       </header>
       {needsDog ? (
         <EmptyState>Create and select a dog first — everything else is dog-scoped.</EmptyState>
@@ -50,10 +52,40 @@ function Shell() {
         <Discover />
       ) : tab === "interests" && activeDogId ? (
         <Interests activeDogId={activeDogId} />
-      ) : (
+      ) : tab === "connections" ? (
         <Connections />
+      ) : (
+        <Account />
       )}
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dog switcher
+// ---------------------------------------------------------------------------
+
+function DogSwitcher({ activeDogId, onSwitched }: { activeDogId: string | null; onSwitched: () => void }) {
+  const [dogs, setDogs] = useState<dogsData.DogRow[] | null>(null);
+
+  useEffect(() => {
+    dogsData.listMyDogs().then(setDogs).catch(() => setDogs([]));
+  }, []);
+
+  if (!dogs || dogs.length === 0) return null;
+  const current = dogs.find((dog) => dog.id === activeDogId);
+  return (
+    <p>
+      Active dog:{" "}
+      <select
+        aria-label="Active dog"
+        value={activeDogId ?? ""}
+        onChange={(event) => void dogsData.setActiveDog(event.target.value).then(onSwitched)}
+      >
+        {!current && <option value="">— select —</option>}
+        {dogs.map((dog) => <option key={dog.id} value={dog.id}>{dog.name}</option>)}
+      </select>
+    </p>
   );
 }
 
@@ -92,7 +124,7 @@ function MyDogs({ onActiveChanged }: { onActiveChanged: () => Promise<void> }) {
       <ul>
         {(dogs ?? []).map((dog) => (
           <li key={dog.id}>
-            <DogCard dog={dog} onChanged={() => void act(async () => {}, "Updated.").then(() => onActiveChanged)} />
+            <DogCard dog={dog} onChanged={() => { void act(async () => {}, "Updated.").then(() => onActiveChanged()); }} />
           </li>
         ))}
       </ul>
@@ -184,10 +216,7 @@ function DogEditor({ dog, onChanged }: { dog: dogsData.DogRow; onChanged: () => 
           <label>Age min (months)<br /><input type="number" min={0} value={prefs.ageMinMonths} onChange={(event) => setPrefs({ ...prefs, ageMinMonths: event.target.value })} /></label>
           <label>Age max<br /><input type="number" min={0} value={prefs.ageMaxMonths} onChange={(event) => setPrefs({ ...prefs, ageMaxMonths: event.target.value })} /></label>
           <label>Max distance (km)<br /><input type="number" min={1} value={prefs.maxDistanceKm} onChange={(event) => setPrefs({ ...prefs, maxDistanceKm: event.target.value })} /></label><br />
-          <button disabled={busy} onClick={() => void run(() => dogsData.savePreferences(dog.id, {
-            requiredBreeds: prefs.requiredBreeds, preferredBreeds: prefs.preferredBreeds,
-            ageMinMonths: prefs.ageMinMonths, ageMaxMonths: prefs.ageMaxMonths, maxDistanceKm: prefs.maxDistanceKm,
-          }), "Preferences saved.")}>Save preferences</button>
+          <button disabled={busy} onClick={() => void run(() => dogsData.savePreferences(dog.id, prefs), "Preferences saved.")}>Save preferences</button>
         </div>
       )}
 
@@ -199,7 +228,7 @@ function DogEditor({ dog, onChanged }: { dog: dogsData.DogRow; onChanged: () => 
 
 function PhotoThumb({ path }: { path: string }) {
   const [url, setUrl] = useState<string>("");
-  useEffect(() => { void dogsData.photoSignedUrl(path).then(setUrl); }, [path]);
+  useEffect(() => { void photoSignedUrl(path).then(setUrl); }, [path]);
   return url ? <img src={url} alt="Dog photo" style={{ maxWidth: 96, maxHeight: 96 }} /> : <span>photo</span>;
 }
 
@@ -250,6 +279,7 @@ function Interests({ activeDogId }: { activeDogId: string }) {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [views, setViews] = useState<{ received: interestsData.InterestView[]; sent: interestsData.InterestView[] } | null>(null);
+  const [showPassed, setShowPassed] = useState(false);
 
   const load = useCallback(async () => {
     setState("loading"); setErrorText(null);
@@ -284,6 +314,8 @@ function Interests({ activeDogId }: { activeDogId: string }) {
       <h2>Interests for your active dog</h2>
       {note && <p role="status">{note}</p>}
       {errorText && <p role="alert">{errorText}</p>}
+      <p><a href="#passed" onClick={(event) => { event.preventDefault(); setShowPassed(!showPassed); }}>Review passed dogs</a></p>
+      {showPassed && <PassedDogs activeDogId={activeDogId} />}
       <h3>Received ({(views?.received ?? []).length})</h3>
       {(views?.received ?? []).length === 0 ? <EmptyState>No pending received interests.</EmptyState> : (
         <ul>{(views?.received ?? []).map((view) => (
@@ -307,8 +339,91 @@ function Interests({ activeDogId }: { activeDogId: string }) {
   );
 }
 
+function PassedDogs({ activeDogId }: { activeDogId: string }) {
+  const [state, setState] = useState<"loading" | "error" | "ready">("loading");
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [list, setList] = useState<dogsData.PassedDog[] | null>(null);
+
+  const load = useCallback(async () => {
+    setState("loading"); setErrorText(null);
+    try { setList(await dogsData.listPassedDogs(activeDogId)); setState("ready"); }
+    catch (caught) { setErrorText(describe(caught)); setState("error"); }
+  }, [activeDogId]);
+  useEffect(() => { void load(); }, [load]);
+
+  const reconsider = async (targetDogId: string) => {
+    try {
+      await dogsData.reconsiderPassed(activeDogId, targetDogId);
+      setNote("Candidate restored to your feed.");
+      await load();
+    } catch (caught) { setErrorText(describe(caught)); }
+  };
+
+  if (state === "loading") return <LoadingState />;
+  if (state === "error") return <ErrorState message={errorText ?? "Something went wrong."} retry={() => void load()} />;
+
+  return (
+    <section data-testid="passed-dogs">
+      <h3>Passed dogs</h3>
+      {note && <p role="status">{note}</p>}
+      {errorText && <p role="alert">{errorText}</p>}
+      {(list ?? []).length === 0 ? <EmptyState>You haven't passed any candidates for this dog.</EmptyState> : (
+        <ul>
+          {(list ?? []).map((entry) => (
+            <li key={entry.id}>
+              {entry.photoPath && <PhotoThumb path={entry.photoPath} />}{" "}
+              <strong>{entry.name}</strong> · {entry.breed} · {entry.sex.toLowerCase()}{" "}
+              <button onClick={() => void reconsider(entry.id)}>Reconsider</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Account
+// ---------------------------------------------------------------------------
+
+function Account() {
+  const [email, setEmail] = useState<string>("");
+  const [displayName, setDisplayName] = useState<string>("");
+  const [verification, setVerification] = useState<string>("");
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setEmail(user.email ?? "");
+      setDisplayName((user.user_metadata?.displayName as string | undefined) ?? "");
+      const { data: owner } = await supabase.from("owners").select("verification_status").eq("id", user.id).single();
+      setVerification((owner as { verification_status: string } | null)?.verification_status ?? "");
+    })();
+  }, []);
+
+  const signOut = async () => {
+    try { await logout(); window.location.reload(); }
+    catch { setNote("Could not sign out."); }
+  };
+
+  return (
+    <section>
+      <h2>Account</h2>
+      {note && <p role="alert">{note}</p>}
+      <dl>
+        <dt>Email</dt><dd>{email || "—"}</dd>
+        <dt>Display name</dt><dd>{displayName || "—"}</dd>
+        <dt>Verification</dt><dd data-status={verification.toLowerCase()}>{verification ? verification.replace("_", " ").toLowerCase() : "not started"}</dd>
+      </dl>
+      <p><small>Verification workflows arrive in the next release. New accounts start unverified.</small></p>
+      <button onClick={() => void signOut()}>Sign out</button>
+    </section>
+  );
+}
+
 function describe(caught: unknown): string {
   return caught instanceof AppError ? caught.message : "Something went wrong. Please try again.";
 }
-
-export type { AvailabilityStatus };

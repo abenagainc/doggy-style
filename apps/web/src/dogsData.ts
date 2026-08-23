@@ -84,6 +84,23 @@ export async function setActiveDog(dogId: string) {
   if (error) throw new AppError("FORBIDDEN", "Could not switch active dog.");
 }
 
+// --- Passed dogs ---
+
+export interface PassedDog { id: string; name: string; breed: string; sex: string; photoPath: string | null }
+
+export async function listPassedDogs(activeDogId: string): Promise<PassedDog[]> {
+  const { data, error } = await supabase.rpc("list_passed_dogs", { p_source_dog_id: activeDogId });
+  if (error) throw new AppError("UNAVAILABLE", "Could not load passed dogs.");
+  return (data ?? []).map((row: { id: string; name: string; breed: string; sex: string; photo_path: string | null }) => ({
+    id: row.id, name: row.name, breed: row.breed, sex: row.sex, photoPath: row.photo_path,
+  }));
+}
+
+export async function reconsiderPassed(activeDogId: string, targetDogId: string): Promise<void> {
+  const { error } = await supabase.from("candidate_passes").delete().eq("source_dog_id", activeDogId).eq("target_dog_id", targetDogId);
+  if (error) throw new AppError("CONFLICT", "Could not reconsider this candidate.");
+}
+
 export async function savePreferences(dogId: string, input: PrefsShape) {
   const parseBreeds = (raw: string) => raw.split(",").map((breed) => breed.trim()).filter(Boolean);
   const required = parseBreeds(input.requiredBreeds);

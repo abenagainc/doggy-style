@@ -49,3 +49,22 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 grant execute on function public.eligible_candidates(uuid) to authenticated;
+
+-- Review Passed Dogs (docs/product/09 discovery exhaustion): server-side to bypass photo RLS.
+create or replace function public.list_passed_dogs(p_source_dog_id uuid)
+returns table (
+  id uuid,
+  name text,
+  breed text,
+  sex public.dog_sex,
+  date_of_birth date,
+  photo_path text
+)
+language sql stable security definer set search_path = public as $$
+  select d.id, d.name, d.breed, d.sex, d.date_of_birth,
+    (select p.storage_path from public.dog_photos p where p.dog_id = d.id order by p.sort_order, p.created_at limit 1) as photo_path
+  from public.candidate_passes cp
+  join public.dogs d on d.id = cp.target_dog_id
+  where cp.source_dog_id = p_source_dog_id;
+$$;
+grant execute on function public.list_passed_dogs(uuid) to authenticated;
