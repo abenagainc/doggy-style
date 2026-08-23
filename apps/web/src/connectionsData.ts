@@ -56,6 +56,7 @@ export async function confirmProceeding(connectionId: string): Promise<string> {
 }
 
 export async function endConnection(connectionId: string) {
-  const { data: updated, error } = await supabase.from("connections").update({ status: "CLOSED" }).eq("id", connectionId).select("status").single();
-  if (error || updated?.status !== "CLOSED") throw new AppError("CONFLICT", "Could not end this connection.");
+  const { data: updated, error } = await supabase.from("connections").update({ status: "CLOSED" }).eq("id", connectionId).select("status");
+  if (error) throw new AppError("CONFLICT", error.message);
+  if (!updated || updated.length === 0) throw new AppError("FORBIDDEN", "You are not a participant of this connection.");
 }
