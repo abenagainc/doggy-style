@@ -37,7 +37,14 @@ export interface InterestRecord {
   createdAt: string; updatedAt: string;
 }
 export interface ConnectionRecord {
-  id: string; lowerDogId: string; higherDogId: string; status: "ACTIVE"; createdAt: string; updatedAt: string;
+  id: string; lowerDogId: string; higherDogId: string; status: "ACTIVE" | "SCREENING" | "PROCEEDING" | "CLOSED";
+  createdAt: string; updatedAt: string;
+}
+export interface ConversationRecord {
+  id: string; connectionId: string; createdAt: string;
+}
+export interface MessageRecord {
+  id: string; conversationId: string; senderOwnerId: string; body: string; sentAt: string;
 }
 
 /** A feed entry exposes a distance band, never an exact distance (DECISIONS.md #7). */
@@ -65,6 +72,15 @@ export interface MatchingRepository {
   findConnectionById(id: string): Promise<ConnectionRecord | null>;
   createConnection(connection: ConnectionRecord): Promise<ConnectionRecord>;
   listConnectionsByDog(dogId: string): Promise<ConnectionRecord[]>;
+  listConnectionsByOwner(ownerId: string): Promise<ConnectionRecord[]>;
+  updateConnection(id: string, update: Partial<ConnectionRecord>): Promise<ConnectionRecord>;
+  getConversationForConnection(connectionId: string): Promise<ConversationRecord | null>;
+  getConversation(id: string): Promise<ConversationRecord | null>;
+  createConversation(record: ConversationRecord): Promise<ConversationRecord>;
+  listMessages(conversationId: string): Promise<MessageRecord[]>;
+  addMessage(message: MessageRecord): Promise<MessageRecord>;
+  listProceedConfirmations(connectionId: string): Promise<string[]>;
+  addProceedConfirmation(connectionId: string, ownerId: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -295,4 +311,99 @@ export class InterestService {
 }
 
 export type { VerificationStatus as VerificationStatusExport };
+
+// ---------------------------------------------------------------------------
+// Milestone 3: connection lifecycle, conversation, proceeding (docs/technical/22 §§3-4, 7)
+// ---------------------------------------------------------------------------
+
+export class ConnectionService {
+  constructor(private readonly repo: MatchingRepository, private readonly now: () => Date = () => new Date()) {}
+
+  /** Resolves the connection and asserts the caller is one of the two participating owners. */
+  async authorize(connectionId: string, ownerId: string): Promise<ConnectionRecord> {
+    const connection = await this.repo.findConnectionById(connectionId);
+    if (!connection) throw new AppError("NOT_FOUND", "Connection not found.");
+    for (const dogId of [connection.lowerDogId, connection.higherDogId]) {
+      const dog = await this.repo.getDog(dogId);
+      if (dog?.ownerId === ownerId) return connection;
+    }
+    throw new AppError("FORBIDDEN", "You do not have access to this connection.");
+  }
+
+  list(ownerId: string): Promise<ConnectionRecord[]> { return this.repo.listConnectionsByOwner(ownerId); }
+
+  async detail(ownerId: string, connectionId: string): Promise<ConnectionRecord> { return this.authorize(connectionId, ownerId); }
+
+  /** Either owner may end the connection; closing is terminal. */
+  async end(ownerId: string, connectionId: string): Promise<ConnectionRecord> {
+    const connection = await this.authorize(connectionId, ownerId);
+    if (connection.status === "CLOSED") throw new AppError("CONFLICT", "This connection is already closed.");
+    return this.repo.updateConnection(connection.id, { status: "CLOSED", updatedAt: this.now().toISOString() });
+  }
+
+  /**
+   * Idempotent per-owner proceeding confirmation (DECISIONS.md #5). The connection becomes
+   * PROCEEDING only when both current owners have confirmed.
+   */
+  async confirmProceeding(ownerId: string, connectionId: string): Promise<ConnectionRecord> {
+    const connection = await this.authorize(connectionId, ownerId);
+    if (connection.status === "CLOSED") throw new AppError("CONFLICT", "A closed connection cannot proceed.");
+    if (connection.status === "PROCEEDING") return connection; // idempotent
+    const existing = new Set(await this.repo.listProceedConfirmations(connection.id));
+    if (!existing.has(ownerId)) {
+      await this.repo.addProceedConfirmation(connection.id, ownerId);
+      existing.add(ownerId);
+    }
+    // Both owners = the owners of both connected dogs.
+    const ownerIds: string[] = [];
+    for (const dogId of [connection.lowerDogId, connection.higherDogId]) {
+      const dog = await this.repo.getDog(dogId);
+      if (dog) ownerIds.push(dog.ownerId);
+    }
+    if (ownerIds.length === 2 && ownerIds.every((id) => existing.has(id))) {
+      return this.repo.updateConnection(connection.id, { status: "PROCEEDING", updatedAt: this.now().toISOString() });
+    }
+    return connection;
+  }
+
+  async proceedConfirmations(ownerId: string, connectionId: string): Promise<string[]> {
+    const connection = await this.authorize(connectionId, ownerId);
+    return this.repo.listProceedConfirmations(connection.id);
+  }
+}
+
+export class ConversationService {
+  private readonly connections: ConnectionService;
+  constructor(private readonly repo: MatchingRepository, private readonly now: () => Date = () => new Date()) {
+    this.connections = new ConnectionService(repo, now);
+  }
+
+  async ensure(ownerId: string, connectionId: string): Promise<ConversationRecord> {
+    await this.connections.authorize(connectionId, ownerId); // participants only
+    const existing = await this.repo.getConversationForConnection(connectionId);
+    if (existing) return existing;
+    return this.repo.createConversation({ id: crypto.randomUUID(), connectionId, createdAt: this.now().toISOString() });
+  }
+
+  async messages(ownerId: string, conversationId: string): Promise<MessageRecord[]> {
+    const conversation = await this.authorizeConversation(conversationId, ownerId);
+    return this.repo.listMessages(conversation.id);
+  }
+
+  async send(ownerId: string, conversationId: string, body: string): Promise<MessageRecord> {
+    const trimmed = body.trim();
+    if (!trimmed || trimmed.length > 4000) throw new AppError("VALIDATION_ERROR", "Message must be between 1 and 4000 characters.");
+    const conversation = await this.authorizeConversation(conversationId, ownerId);
+    const connection = await this.repo.findConnectionById(conversation.connectionId);
+    if (!connection || connection.status === "CLOSED") throw new AppError("CONFLICT", "This conversation is read-only."); // docs/technical/22 §4
+    return this.repo.addMessage({ id: crypto.randomUUID(), conversationId: conversation.id, senderOwnerId: ownerId, body: trimmed, sentAt: this.now().toISOString() });
+  }
+
+  private async authorizeConversation(conversationId: string, ownerId: string): Promise<ConversationRecord> {
+    const conversation = await this.repo.getConversation(conversationId);
+    if (!conversation) throw new AppError("NOT_FOUND", "Conversation not found.");
+    await this.connections.authorize(conversation.connectionId, ownerId);
+    return conversation;
+  }
+}
 export { verificationRank };

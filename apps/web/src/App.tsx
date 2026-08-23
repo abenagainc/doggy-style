@@ -3,6 +3,7 @@ import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { supabase } from "./supabase.js";
 import { restoreActiveDog } from "./dogs.js";
 import { Discover } from "./Discover.js";
+import { Connections } from "./Connections.js";
 
 type DogSummary = { id: string; name: string; archived_at: string | null; profile_status: string; availability_status: string };
 

@@ -6,9 +6,11 @@ import {
   validatePreferences,
   type CandidateRecord,
   type ConnectionRecord,
+  type ConversationRecord,
   type InterestRecord,
   type MatchingRepository,
   type MatchingPreferenceRow,
+  type MessageRecord,
   type PassRecord,
   type PreferenceLevel,
 } from "./index.js";
@@ -59,12 +61,32 @@ class MemoryMatching implements MatchingRepository {
     this.interests.set(this.key(next.sourceDogId, next.targetDogId), next);
     return next;
   }
-  async findOpenConnection(lowerDogId: string, higherDogId: string) {
-    return this.connections.find((c) => c.status === "ACTIVE" && ((c.lowerDogId === lowerDogId && c.higherDogId === higherDogId) || (c.lowerDogId === higherDogId && c.higherDogId === lowerDogId))) ?? null;
-  }
   async findConnectionById(id: string) { return this.connections.find((c) => c.id === id) ?? null; }
   async createConnection(connection: ConnectionRecord) { this.connections.push(connection); return connection; }
   async listConnectionsByDog(dogId: string) { return this.connections.filter((c) => c.lowerDogId === dogId || c.higherDogId === dogId); }
+  async listConnectionsByOwner() { return []; }
+  async findOpenConnection(lowerDogId: string, higherDogId: string) {
+    return this.connections.find((c) => c.status === "ACTIVE" && ((c.lowerDogId === lowerDogId && c.higherDogId === higherDogId) || (c.lowerDogId === higherDogId && c.higherDogId === lowerDogId))) ?? null;
+  }
+  async updateConnection(id: string, update: Partial<ConnectionRecord>) {
+    const index = this.connections.findIndex((c) => c.id === id);
+    const next = { ...this.connections[index]!, ...update };
+    this.connections[index] = next;
+    return next;
+  }
+  conversationsByConnection = new Map<string, ConversationRecord>();
+  async getConversationForConnection(connectionId: string) { return this.conversationsByConnection.get(connectionId) ?? null; }
+  async getConversation(id: string) { return [...this.conversationsByConnection.values()].find((c) => c.id === id) ?? null; }
+  async createConversation(record: ConversationRecord) { this.conversationsByConnection.set(record.connectionId, record); return record; }
+  messageLog: MessageRecord[] = [];
+  async listMessages(conversationId: string) { return this.messageLog.filter((m) => m.conversationId === conversationId); }
+  async addMessage(message: MessageRecord) { this.messageLog.push(message); return message; }
+  proceedConfirms = new Map<string, Set<string>>();
+  async listProceedConfirmations(connectionId: string) { return [...(this.proceedConfirms.get(connectionId) ?? new Set())]; }
+  async addProceedConfirmation(connectionId: string, ownerId: string) {
+    const set = this.proceedConfirms.get(connectionId) ?? new Set<string>();
+    set.add(ownerId); this.proceedConfirms.set(connectionId, set);
+  }
 }
 
 const sourceDog = (overrides: Partial<CandidateRecord> = {}): CandidateRecord =>
