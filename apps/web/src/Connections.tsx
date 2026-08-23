@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AppError } from "@doggy-style/domain";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
-import { confirmProceeding, endConnection, listConnections, loadThread, sendMessage, type ChatMessage } from "./connectionsData.js";
+import { confirmProceeding, endConnection, listConnections, loadThread, sendMessage, setArchived, deleteChat, type ChatMessage } from "./connectionsData.js";
 import * as dogsData from "./dogsData.js";
 import { blockOwner, otherOwnerInConnection, REPORT_REASONS, submitReport } from "./safety.js";
 
@@ -13,6 +13,7 @@ export function Connections({ activeDogId, openConnectionId, onOpened }: { activ
   const [items, setItems] = useState<Awaited<ReturnType<typeof listConnections>> | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [myDogNames, setMyDogNames] = useState<Map<string, string>>(new Map());
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     if (openConnectionId) setView({ kind: "chat", connectionId: openConnectionId });
@@ -29,27 +30,44 @@ export function Connections({ activeDogId, openConnectionId, onOpened }: { activ
       let rows = await listConnections();
       if (activeDogId) rows = rows.filter((row) => row.myDogId === activeDogId); // dog-scoped per docs/product/04
       setItems(rows);
-      setView(rows.length ? { kind: "list" } : { kind: "empty" });
+      const visible = showArchived ? rows.filter((row) => row.archived) : rows.filter((row) => !row.archived);
+      setView(visible.length ? { kind: "list" } : { kind: "empty" });
     } catch (caught) { setView({ kind: "error", message: describe(caught) }); }
-  }, [activeDogId]);
+  }, [activeDogId, showArchived]);
   useEffect(() => { void load(); }, [load]);
 
   if (view.kind === "loading") return <LoadingState />;
   if (view.kind === "error") return <ErrorState message={view.message} retry={() => void load()} />;
-  if (view.kind === "empty") return <EmptyState>No connections yet. Mutual interests create connections.</EmptyState>;
   if (view.kind === "chat") return <Chat connectionId={view.connectionId} onBack={() => void load()} />;
+
+  const visible = (items ?? []).filter((row) => (showArchived ? row.archived : !row.archived));
+  const archivedCount = (items ?? []).filter((row) => row.archived).length;
 
   return (
     <main>
       <h1>Connections</h1>
       {note && <p role="status">{note}</p>}
+      {archivedCount > 0 && (
+        <p>
+          <a href="#archived" onClick={(event) => { event.preventDefault(); setShowArchived(!showArchived); }}>
+            {showArchived ? "← Active chats" : `Archived chats (${archivedCount})`}
+          </a>
+        </p>
+      )}
+      {view.kind === "empty" && <EmptyState>{showArchived ? "No archived chats." : "No connections yet. Mutual interests create connections."}</EmptyState>}
       <ul>
-        {(items ?? []).map((row) => (
+        {visible.map((row) => (
           <li key={row.id}>
             <strong>{row.otherDogName}</strong> — <span data-status={row.status}>{row.status.toLowerCase()}</span>{" "}
             <small>(your dog: {myDogNames.get(row.myDogId) ?? "unknown"})</small>{" "}
-            <button onClick={() => setView({ kind: "chat", connectionId: row.id })}>Open conversation</button>
-            {row.status !== "CLOSED" && <RejectButton connectionId={row.id} dogName={row.otherDogName} onDone={() => void load()} />}
+            <button onClick={() => setView({ kind: "chat", connectionId: row.id })}>Chat</button>
+            {row.status !== "CLOSED" && <UnfriendButton connectionId={row.id} dogName={row.otherDogName} onDone={() => void load()} />}
+            {!row.archived ? (
+              <ArchiveButton connectionId={row.id} onDone={() => void load()} />
+            ) : (
+              <button onClick={() => void setArchived(row.id, false).then(() => void load()).catch(() => undefined)}>Unarchive</button>
+            )}
+            <DeleteChatButton connectionId={row.id} dogName={row.otherDogName} onDone={() => void load()} />
           </li>
         ))}
       </ul>
@@ -57,7 +75,39 @@ export function Connections({ activeDogId, openConnectionId, onOpened }: { activ
   );
 }
 
-function RejectButton({ connectionId, dogName, onDone }: { connectionId: string; dogName: string; onDone: () => void }) {
+function ArchiveButton({ connectionId, onDone }: { connectionId: string; onDone: () => void }) {
+  return (
+    <button onClick={() => void setArchived(connectionId, true).then(onDone).catch(() => undefined)}>
+      Archive
+    </button>
+  );
+}
+
+function DeleteChatButton({ connectionId, dogName, onDone }: { connectionId: string; dogName: string; onDone: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  if (!confirming) return <button onClick={() => setConfirming(true)}>Delete chat</button>;
+  return (
+    <span>
+      {" "}Delete the chat with {dogName}? Messages are removed for BOTH owners permanently.{" "}
+      <button
+        disabled={busy}
+        onClick={() => {
+          setBusy(true); setErrorText(null);
+          deleteChat(connectionId).then(onDone).catch((caught) => setErrorText(caught instanceof AppError ? caught.message : "Delete failed.")).finally(() => setBusy(false));
+        }}
+      >
+        {busy ? "…" : "Yes, delete"}
+      </button>{" "}
+      <button disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
+      {errorText && <span role="alert"> {errorText}</span>}
+    </span>
+  );
+}
+
+function UnfriendButton({ connectionId, dogName, onDone }: { connectionId: string; dogName: string; onDone: () => void }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -72,12 +122,12 @@ function RejectButton({ connectionId, dogName, onDone }: { connectionId: string;
   };
 
   if (!confirming) {
-    return <button onClick={() => setConfirming(true)}>Reject</button>;
+    return <button onClick={() => setConfirming(true)}>Unfriend</button>;
   }
   return (
     <span>
-      {" "}Close your connection with {dogName}? The conversation becomes read-only and cannot be reopened.{" "}
-      <button disabled={busy} onClick={() => void sever()}>{busy ? "…" : "Yes, close it"}</button>{" "}
+      {" "}Unfriend {dogName}? The connection closes and the conversation becomes read-only. It cannot be reopened.{" "}
+      <button disabled={busy} onClick={() => void sever()}>{busy ? "…" : "Yes, unfriend"}</button>{" "}
       <button disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
       {errorText && <span role="alert"> {errorText}</span>}
     </span>

@@ -3,15 +3,15 @@ import { supabase } from "./supabase.js";
 
 async function currentOwnerId() { const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new AppError("UNAUTHORIZED", "Please sign in."); return user.id; }
 
-export interface MyConnection { id: string; status: string; myDogId: string; otherDogId: string; otherDogName: string; createdAt: string }
+export interface MyConnection { id: string; status: string; myDogId: string; otherDogId: string; otherDogName: string; archived: boolean; createdAt: string }
 
 /** Server-side list: shows the OTHER party's dog name (RLS hides their rows from the client). */
 export async function listConnections(): Promise<MyConnection[]> {
   const { data, error } = await supabase.rpc("list_my_connections");
   if (error) throw new AppError("UNAVAILABLE", "We couldn't load your connections. Has migration 00800 been applied?");
-  return (data ?? []).map((row: { id: string; status: string; my_dog_id: string; other_dog_id: string; other_dog_name: string; created_at: string }) => ({
+  return (data ?? []).map((row: { id: string; status: string; my_dog_id: string; other_dog_id: string; other_dog_name: string; archived: boolean; created_at: string }) => ({
     id: row.id, status: row.status, myDogId: row.my_dog_id, otherDogId: row.other_dog_id,
-    otherDogName: row.other_dog_name ?? "Unknown", createdAt: row.created_at,
+    otherDogName: row.other_dog_name ?? "Unknown", archived: Boolean(row.archived), createdAt: row.created_at,
   }));
 }
 
@@ -59,4 +59,14 @@ export async function endConnection(connectionId: string) {
   const { data: updated, error } = await supabase.from("connections").update({ status: "CLOSED" }).eq("id", connectionId).select("status");
   if (error) throw new AppError("CONFLICT", error.message);
   if (!updated || updated.length === 0) throw new AppError("FORBIDDEN", "You are not a participant of this connection.");
+}
+
+export async function setArchived(connectionId: string, archived: boolean): Promise<void> {
+  const { error } = await supabase.rpc("set_connection_archived", { p_connection_id: connectionId, p_archived: archived });
+  if (error) throw new AppError("FORBIDDEN", "Could not archive this chat.");
+}
+
+export async function deleteChat(connectionId: string): Promise<void> {
+  const { error } = await supabase.rpc("delete_connection_chat", { p_connection_id: connectionId });
+  if (error) throw new AppError("CONFLICT", "Could not delete this chat.");
 }
