@@ -1,0 +1,4 @@
+project_id = "doggy-style"
+
+[storage]
+file_size_limit = "10MiB"

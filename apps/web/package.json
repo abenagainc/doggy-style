@@ -1,0 +1,8 @@
+{
+  "name": "@doggy-style/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@doggy-style/database": "workspace:*", "@doggy-style/domain": "workspace:*", "@doggy-style/ui": "workspace:*", "@supabase/supabase-js": "^2.49.8", "react": "^19.1.0", "react-dom": "^19.1.0" },
+  "scripts": { "dev": "vite", "build": "vite build", "typecheck": "tsc --noEmit -p tsconfig.json" }
+}

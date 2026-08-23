@@ -17,3 +17,7 @@ Reusable matching-platform engine; first rollout: dog breeding.
 ## Important
 
 Do not build the product from memory. Read `AGENTS.md` and the relevant specification before implementing a feature.
+
+## Local development
+
+Copy `.env.example` to `.env` and fill in the Supabase project URL, anon key, and current legal-document versions. Never place a Supabase service-role key in a browser application or commit it. Install the workspace dependencies with `corepack pnpm install`, run migrations with the Supabase CLI, then use `pnpm typecheck` and `pnpm test`.
