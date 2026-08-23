@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AppError } from "@doggy-style/domain";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { confirmProceeding, endConnection, listConnections, loadThread, sendMessage, type ChatMessage } from "./connectionsData.js";
+import { blockOwner, otherOwnerInConnection, REPORT_REASONS, submitReport } from "./safety.js";
 
 type View = { kind: "loading" } | { kind: "error"; message: string } | { kind: "empty" }
   | { kind: "list" } | { kind: "chat"; connectionId: string };
@@ -117,7 +118,60 @@ function Chat({ connectionId, onBack }: { connectionId: string; onBack: () => vo
       )}
       {status === "PROCEEDING" && <p role="status">🐾 Both owners confirmed proceeding.</p>}
       {!readOnly && <button onClick={() => void end()}>End connection</button>}
+      <SafetyPanel connectionId={connectionId} onNote={setNote} />
     </main>
+  );
+}
+
+function SafetyPanel({ connectionId, onNote }: { connectionId: string; onNote: (note: string) => void }) {
+  const [open, setOpen] = useState<"none" | "report" | "block">("none");
+  const [reason, setReason] = useState<string>(REPORT_REASONS[0]);
+  const [details, setDetails] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const doReport = async () => {
+    setError(null);
+    try {
+      const target = await otherOwnerInConnection(connectionId);
+      await submitReport({ targetOwnerId: target, reason: reason as (typeof REPORT_REASONS)[number], details: details || undefined, connectionId });
+      onNote("Report submitted. Our moderation team will review it.");
+      setOpen("none"); setDetails("");
+    } catch (caught) { setError(describe(caught)); }
+  };
+
+  const doBlock = async () => {
+    setError(null);
+    try {
+      const target = await otherOwnerInConnection(connectionId);
+      await blockOwner(target);
+      onNote("Owner blocked across all of your dogs. The connection is closed; unblocking does not reopen it.");
+      setOpen("none");
+    } catch (caught) { setError(describe(caught)); }
+  };
+
+  return (
+    <section data-testid="safety-panel">
+      <h2>Safety</h2>
+      {error && <p role="alert">{error}</p>}
+      <p><a href="#report" onClick={(event) => { event.preventDefault(); setOpen(open === "report" ? "none" : "report"); }}>Report this owner</a>{" · "}<a href="#block" onClick={(event) => { event.preventDefault(); setOpen(open === "block" ? "none" : "block"); }}>Block this owner</a></p>
+      {open === "report" && (
+        <div>
+          <label>Reason<br />
+            <select value={reason} onChange={(event) => setReason(event.target.value)}>
+              {REPORT_REASONS.map((option) => <option key={option} value={option}>{option.replaceAll("_", " ").toLowerCase()}</option>)}
+            </select>
+          </label>
+          <label>Details (optional)<br /><textarea value={details} maxLength={2000} onChange={(event) => setDetails(event.target.value)} /></label>
+          <button onClick={() => void doReport()}>Submit report</button>
+        </div>
+      )}
+      {open === "block" && (
+        <div>
+          <p>Blocking applies to <strong>all of your dogs</strong> and this owner's dogs: discovery is hidden, new interests are prevented, and existing connections — including this one — will close permanently. Messages stay retained for safety review but become inaccessible. Unblocking will not reopen closed connections.</p>
+          <button onClick={() => void doBlock()}>Confirm block</button>
+        </div>
+      )}
+    </section>
   );
 }
 

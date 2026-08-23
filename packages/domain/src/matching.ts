@@ -38,6 +38,7 @@ export interface InterestRecord {
 }
 export interface ConnectionRecord {
   id: string; lowerDogId: string; higherDogId: string; status: "ACTIVE" | "SCREENING" | "PROCEEDING" | "CLOSED";
+  closedReason?: string | undefined;
   createdAt: string; updatedAt: string;
 }
 export interface ConversationRecord {
@@ -45,6 +46,16 @@ export interface ConversationRecord {
 }
 export interface MessageRecord {
   id: string; conversationId: string; senderOwnerId: string; body: string; sentAt: string;
+}
+export interface BlockRecord {
+  blockerId: string; blockedId: string; createdAt: string;
+}
+export const reportReasons = ["INAPPROPRIATE_CONTENT", "HARASSMENT", "MISREPRESENTATION", "SAFETY_CONCERN", "OTHER"] as const;
+export type ReportReason = (typeof reportReasons)[number];
+export interface ReportRecord {
+  caseId: string; reporterOwnerId: string; targetOwnerId: string;
+  connectionId?: string | undefined; reason: ReportReason; details?: string | undefined;
+  status: "OPEN" | "IN_REVIEW" | "CLOSED"; createdAt: string;
 }
 
 /** A feed entry exposes a distance band, never an exact distance (DECISIONS.md #7). */
@@ -81,6 +92,11 @@ export interface MatchingRepository {
   addMessage(message: MessageRecord): Promise<MessageRecord>;
   listProceedConfirmations(connectionId: string): Promise<string[]>;
   addProceedConfirmation(connectionId: string, ownerId: string): Promise<void>;
+  getBlock(blockerId: string, blockedId: string): Promise<BlockRecord | null>;
+  anyBlockBetween(ownerA: string, ownerB: string): Promise<boolean>;
+  addBlock(block: BlockRecord): Promise<BlockRecord>;
+  removeBlock(blockerId: string, blockedId: string): Promise<void>;
+  addReport(report: ReportRecord): Promise<ReportRecord>;
 }
 
 // ---------------------------------------------------------------------------
@@ -398,12 +414,78 @@ export class ConversationService {
     if (!connection || connection.status === "CLOSED") throw new AppError("CONFLICT", "This conversation is read-only."); // docs/technical/22 §4
     return this.repo.addMessage({ id: crypto.randomUUID(), conversationId: conversation.id, senderOwnerId: ownerId, body: trimmed, sentAt: this.now().toISOString() });
   }
-
   private async authorizeConversation(conversationId: string, ownerId: string): Promise<ConversationRecord> {
     const conversation = await this.repo.getConversation(conversationId);
     if (!conversation) throw new AppError("NOT_FOUND", "Conversation not found.");
     await this.connections.authorize(conversation.connectionId, ownerId);
     return conversation;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Milestone 4: safety — blocks and reports (DECISIONS.md #6, #9; docs/technical/22 §7, 25 §§4-5)
+// ---------------------------------------------------------------------------
+
+export class SafetyService {
+  constructor(private readonly repo: MatchingRepository, private readonly now: () => Date = () => new Date()) {}
+
+  /**
+   * Owner-level block (docs/product/07 §13). Immediately closes open connections between the
+   * two owners with reason BLOCKED; messages are retained but hidden by connection closure.
+   * Unblocking restores only future eligibility — history stays closed.
+   */
+  async block(blockerId: string, blockedId: string): Promise<BlockRecord> {
+    if (!blockerId) throw new AppError("UNAUTHORIZED", "Please sign in.");
+    if (blockerId === blockedId) throw new AppError("VALIDATION_ERROR", "You cannot block yourself.");
+    const existing = await this.repo.getBlock(blockerId, blockedId);
+    if (existing) throw new AppError("CONFLICT", "This owner is already blocked.");
+    const block = await this.repo.addBlock({ blockerId, blockedId, createdAt: this.now().toISOString() });
+    // Close every open connection between any of their dogs (owner-level, all dogs).
+    const connections = await this.repo.listConnectionsByOwner(blockerId);
+    for (const connection of connections) {
+      if (connection.status === "CLOSED") continue;
+      const otherDogOwner = await this.ownerOfOtherDog(connection, blockerId);
+      if (otherDogOwner === blockedId) {
+        await this.repo.updateConnection(connection.id, { status: "CLOSED", closedReason: "BLOCKED", updatedAt: this.now().toISOString() });
+      }
+    }
+    return block;
+  }
+
+  async unblock(blockerId: string, blockedId: string): Promise<void> {
+    if (!blockerId) throw new AppError("UNAUTHORIZED", "Please sign in.");
+    const existing = await this.repo.getBlock(blockerId, blockedId);
+    if (!existing) return; // idempotent
+    await this.repo.removeBlock(blockerId, blockedId);
+  }
+
+  async isBlockedBetween(ownerA: string, ownerB: string): Promise<boolean> {
+    return this.repo.anyBlockBetween(ownerA, ownerB);
+  }
+
+  /** Creates a moderation report with an immutable case id (DECISIONS.md #9). */
+  async report(reporterOwnerId: string, input: { targetOwnerId: string; reason: ReportReason; details?: string; connectionId?: string }): Promise<ReportRecord> {
+    if (!reporterOwnerId) throw new AppError("UNAUTHORIZED", "Please sign in.");
+    if (!reportReasons.includes(input.reason)) throw new AppError("VALIDATION_ERROR", "Please choose a valid report reason.");
+    if (reporterOwnerId === input.targetOwnerId) throw new AppError("VALIDATION_ERROR", "You cannot report yourself.");
+    return this.repo.addReport({
+      caseId: `case-${crypto.randomUUID()}`,
+      reporterOwnerId,
+      targetOwnerId: input.targetOwnerId,
+      ...(input.connectionId !== undefined ? { connectionId: input.connectionId } : {}),
+      reason: input.reason,
+      ...(input.details !== undefined && input.details.trim() ? { details: input.details.trim().slice(0, 2000) } : {}),
+      status: "OPEN",
+      createdAt: this.now().toISOString(),
+    });
+  }
+
+  private async ownerOfOtherDog(connection: ConnectionRecord, ownerId: string): Promise<string | null> {
+    for (const dogId of [connection.lowerDogId, connection.higherDogId]) {
+      const dog = await this.repo.getDog(dogId);
+      if (dog && dog.ownerId !== ownerId) return dog.ownerId;
+    }
+    return null;
   }
 }
 export { verificationRank };

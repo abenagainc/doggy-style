@@ -9,6 +9,8 @@ import {
   type InterestRecord,
   type MatchingRepository,
   type MessageRecord,
+  type BlockRecord,
+  type ReportRecord,
 } from "./index.js";
 
 const nowIso = "2026-08-23T12:00:00.000Z";
@@ -50,6 +52,13 @@ class MemoryM3 implements MatchingRepository {
     const set = this.confirms.get(connectionId) ?? new Set<string>();
     set.add(ownerId); this.confirms.set(connectionId, set);
   }
+  blocks = new Map<string, BlockRecord>();
+  reports: ReportRecord[] = [];
+  async getBlock(blockerId: string, blockedId: string) { return this.blocks.get(`${blockerId}->${blockedId}`) ?? null; }
+  async anyBlockBetween(ownerA: string, ownerB: string) { return this.blocks.has(`${ownerA}->${ownerB}`) || this.blocks.has(`${ownerB}->${ownerA}`); }
+  async addBlock(block: BlockRecord) { this.blocks.set(`${block.blockerId}->${block.blockedId}`, block); return block; }
+  async removeBlock(blockerId: string, blockedId: string) { this.blocks.delete(`${blockerId}->${blockedId}`); }
+  async addReport(report: ReportRecord) { this.reports.push(report); return report; }
 
   // Unused M2 members, present to satisfy the interface.
   async getPreferences() { return null; } async savePreferences(input: never) { return input; }

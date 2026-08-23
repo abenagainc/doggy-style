@@ -11,6 +11,8 @@ import {
   type MatchingRepository,
   type MatchingPreferenceRow,
   type MessageRecord,
+  type BlockRecord,
+  type ReportRecord,
   type PassRecord,
   type PreferenceLevel,
 } from "./index.js";
@@ -87,6 +89,13 @@ class MemoryMatching implements MatchingRepository {
     const set = this.proceedConfirms.get(connectionId) ?? new Set<string>();
     set.add(ownerId); this.proceedConfirms.set(connectionId, set);
   }
+  blocks = new Map<string, BlockRecord>();
+  reports: ReportRecord[] = [];
+  async getBlock(blockerId: string, blockedId: string) { return this.blocks.get(`${blockerId}->${blockedId}`) ?? null; }
+  async anyBlockBetween(ownerA: string, ownerB: string) { return this.blocks.has(`${ownerA}->${ownerB}`) || this.blocks.has(`${ownerB}->${ownerA}`); }
+  async addBlock(block: BlockRecord) { this.blocks.set(`${block.blockerId}->${block.blockedId}`, block); return block; }
+  async removeBlock(blockerId: string, blockedId: string) { this.blocks.delete(`${blockerId}->${blockedId}`); }
+  async addReport(report: ReportRecord) { this.reports.push(report); return report; }
 }
 
 const sourceDog = (overrides: Partial<CandidateRecord> = {}): CandidateRecord =>

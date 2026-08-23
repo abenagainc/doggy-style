@@ -1,7 +1,7 @@
 import { AppError } from "@doggy-style/domain";
 import { supabase } from "./supabase.js";
 
-export async function signUp(input: { email: string; password: string; displayName?: string; termsVersion: string; privacyNoticeVersion: string; locale: string; termsHash: string; privacyNoticeHash: string }) {
+export async function signUp(input: { email: string; password: string; displayName?: string | undefined; termsVersion: string; privacyNoticeVersion: string; locale: string; termsHash: string; privacyNoticeHash: string }) {
   if (!input.termsVersion || !input.privacyNoticeVersion) throw new AppError("VALIDATION_ERROR", "Please accept the current Terms and Privacy Notice.");
   const { data, error } = await supabase.auth.signUp({ email: input.email, password: input.password, options: { data: { ...(input.displayName ? { displayName: input.displayName } : {}), signupConsent: { termsVersion: input.termsVersion, privacyNoticeVersion: input.privacyNoticeVersion, locale: input.locale, termsHash: input.termsHash, privacyNoticeHash: input.privacyNoticeHash } } } });
   if (error || !data.user) throw new AppError("VALIDATION_ERROR", "We could not create your account.");
