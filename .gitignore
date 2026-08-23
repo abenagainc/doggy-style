@@ -5,3 +5,4 @@ coverage
 .env.*
 !.env.example
 supabase/.temp
+check-auth.mjs
