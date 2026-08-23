@@ -13,22 +13,16 @@ interface OwnerRow { id: string; verification_status: string }
 
 function ageYears(dateOfBirth: string) { return Math.floor((Date.now() - new Date(`${dateOfBirth}T00:00:00Z`).valueOf()) / (365.25 * 24 * 3600 * 1000)); }
 
-/** Loads the ranked eligible candidate feed for the given active dog. */
+/** Loads the ranked eligible candidate feed for the given active dog (server-authoritative via RPC). */
 export async function loadFeed(activeDogId: string): Promise<{ candidates: CandidateCard[]; exhausted: boolean }> {
-  const ownerId = await currentOwnerId();
-  const [{ data: activeDog }, { data: dogs }, { data: owners }, { data: prefs }, { data: passes }, { data: interests }, { data: photos }] = await Promise.all([
+  const [{ data: activeDog }, { data: dogs, error: rpcError }, { data: prefs }, { data: photos }] = await Promise.all([
     supabase.from("dogs").select("*").eq("id", activeDogId).single(),
-    supabase.from("dogs").select("id,owner_id,name,sex,date_of_birth,breed,location").neq("id", activeDogId).eq("availability_status", "AVAILABLE").eq("profile_status", "COMPLETE").eq("breeding_enabled", true).is("archived_at", null),
-    supabase.from("owners").select("id,verification_status"),
+    supabase.rpc("eligible_candidates", { p_source_dog_id: activeDogId }),
     supabase.from("dog_matching_preferences").select("*").eq("dog_id", activeDogId).maybeSingle(),
-    supabase.from("candidate_passes").select("target_dog_id").eq("source_dog_id", activeDogId),
-    supabase.from("interests").select("target_dog_id,status").eq("source_dog_id", activeDogId).eq("status", "ACTIVE"),
     supabase.from("dog_photos").select("dog_id,storage_path").order("sort_order"),
   ]);
   if (!activeDog) throw new AppError("NOT_FOUND", "Active dog not found.");
-  if (!dogs || !owners || !passes || !interests || !photos) throw new AppError("UNAVAILABLE", "We couldn't load candidates right now.");
-  const hidden = new Set([...passes.map((p: { target_dog_id: string }) => p.target_dog_id), ...interests.map((i: { target_dog_id: string }) => i.target_dog_id)]);
-  const verificationByOwner = new Map((owners as OwnerRow[]).map((o) => [o.id, o.verification_status]));
+  if (rpcError) throw new AppError("UNAVAILABLE", "Feed is unavailable — has the discovery RPC migration been applied?");
   const photoBydog = new Map<string, string>();
   for (const photo of photos as { dog_id: string; storage_path: string }[]) { if (!photoBydog.has(photo.dog_id)) photoBydog.set(photo.dog_id, photo.storage_path); }
   const origin = parseLocation(activeDog.location);
@@ -38,9 +32,6 @@ export async function loadFeed(activeDogId: string): Promise<{ candidates: Candi
   type Scored = CandidateCard & { score: number };
   const scored: Scored[] = [];
   for (const row of dogs as unknown as DogRow[]) {
-    if (hidden.has(row.id)) continue;
-    if (row.owner_id === ownerId) continue;
-    if (verificationByOwner.get(row.owner_id) !== "APPROVED") continue; // DECISIONS.md #2
     if ((photoBydog.get(row.id) ?? null) === null) continue; // matching-ready requires >=1 photo
     if (row.sex === activeDog.sex) continue;
     if (required.length > 0 && !required.includes(row.breed)) continue;
