@@ -59,8 +59,8 @@ function Shell() {
         <Discover />
       ) : tab === "interests" && activeDogId ? (
         <Interests activeDogId={activeDogId} />
-      ) : tab === "connections" ? (
-        <Connections />
+      ) : tab === "connections" && activeDogId ? (
+        <Connections activeDogId={activeDogId} />
       ) : (
         <Account />
       )}

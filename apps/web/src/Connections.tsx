@@ -2,24 +2,31 @@ import { useCallback, useEffect, useState } from "react";
 import { AppError } from "@doggy-style/domain";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { confirmProceeding, endConnection, listConnections, loadThread, sendMessage, type ChatMessage } from "./connectionsData.js";
+import * as dogsData from "./dogsData.js";
 import { blockOwner, otherOwnerInConnection, REPORT_REASONS, submitReport } from "./safety.js";
 
 type View = { kind: "loading" } | { kind: "error"; message: string } | { kind: "empty" }
   | { kind: "list" } | { kind: "chat"; connectionId: string };
 
-export function Connections() {
+export function Connections({ activeDogId }: { activeDogId?: string | null }) {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [items, setItems] = useState<Awaited<ReturnType<typeof listConnections>> | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [myDogNames, setMyDogNames] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    dogsData.listMyDogs().then((dogs) => setMyDogNames(new Map(dogs.map((d) => [d.id, d.name])))).catch(() => undefined);
+  }, []);
 
   const load = useCallback(async () => {
     setView({ kind: "loading" }); setNote(null);
     try {
-      const rows = await listConnections();
+      let rows = await listConnections();
+      if (activeDogId) rows = rows.filter((row) => row.myDogId === activeDogId); // dog-scoped per docs/product/04
       setItems(rows);
       setView(rows.length ? { kind: "list" } : { kind: "empty" });
     } catch (caught) { setView({ kind: "error", message: describe(caught) }); }
-  }, []);
+  }, [activeDogId]);
   useEffect(() => { void load(); }, [load]);
 
   if (view.kind === "loading") return <LoadingState />;
@@ -35,6 +42,7 @@ export function Connections() {
         {(items ?? []).map((row) => (
           <li key={row.id}>
             <strong>{row.otherDogName}</strong> — <span data-status={row.status}>{row.status.toLowerCase()}</span>{" "}
+            <small>(your dog: {myDogNames.get(row.myDogId) ?? "unknown"})</small>{" "}
             <button onClick={() => setView({ kind: "chat", connectionId: row.id })}>Open conversation</button>
             {row.status !== "CLOSED" && <RejectButton connectionId={row.id} dogName={row.otherDogName} onDone={() => void load()} />}
           </li>
