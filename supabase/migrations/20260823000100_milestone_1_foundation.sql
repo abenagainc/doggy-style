@@ -173,6 +173,18 @@ create policy "owners insert own dog photos" on public.dog_photos for insert wit
 create policy "owners delete own dog photos" on public.dog_photos for delete using (exists (select 1 from public.dogs d where d.id = dog_id and d.owner_id = auth.uid()));
 
 insert into storage.buckets (id, name, public) values ('dog-photos', 'dog-photos', false) on conflict (id) do nothing;
-create policy "owners upload only into own dog folder" on storage.objects for insert to authenticated with check (bucket_id = 'dog-photos' and (storage.foldername(name))[1] = auth.uid()::text and exists (select 1 from public.dogs d where d.id::text = (storage.foldername(name))[2] and d.owner_id = auth.uid() and d.archived_at is null));
+-- Storage RLS note: the storage service cannot evaluate cross-table subqueries inside policies,
+-- so the dogs-existence check lives in a SECURITY DEFINER function instead.
+create or replace function public.can_upload_to_dog(p_uid uuid, p_path text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select (storage.foldername(p_path))[1] = p_uid::text
+    and exists (
+      select 1 from public.dogs d
+      where d.id::text = (storage.foldername(p_path))[2]
+        and d.owner_id = p_uid
+        and d.archived_at is null
+    );
+$$;
+create policy "owners upload only into own dog folder" on storage.objects for insert to authenticated with check (bucket_id = 'dog-photos' and public.can_upload_to_dog(auth.uid(), name));
 create policy "owners read own dog storage" on storage.objects for select to authenticated using (bucket_id = 'dog-photos' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "owners delete own dog storage" on storage.objects for delete to authenticated using (bucket_id = 'dog-photos' and (storage.foldername(name))[1] = auth.uid()::text);
