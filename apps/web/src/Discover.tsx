@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AppError } from "@doggy-style/domain";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { restoreActiveDog } from "./dogs.js";
-import { listPassedDogs, reconsiderPassed, photoSignedUrl } from "./dogsData.js";
+import { listPassedDogs, reconsiderPassed, reconsiderAllPassed, photoSignedUrl } from "./dogsData.js";
 import { declineInterest, listReceivedInterests, loadFeed, passCandidate, sendInterest, type CandidateCard, type ReceivedInterest } from "./discovery.js";
 import { CandidateDetail } from "./CandidateDetail.js";
 
@@ -67,6 +67,22 @@ export function Discover() {
     try { setReceived(await listReceivedInterests(activeDogId)); } catch (caught) { setMessage(describe(caught)); }
   };
 
+  /** "View passed dogs" from exhaustion: restore all passes, reload feed, show first card. */
+  const viewPassed = async () => {
+    if (!activeDogId) return;
+    setMessage(null);
+    try {
+      const restored = await reconsiderAllPassed(activeDogId);
+      const feed = await loadFeed(activeDogId);
+      setCandidates(feed.candidates);
+      setCurrent(feed.candidates[0] ?? null);
+      setScreen("feed");
+      setMessage(restored > 0
+        ? `${restored} passed dog${restored === 1 ? "" : "s"} restored to your feed.`
+        : "No passed dogs to restore.");
+    } catch (caught) { setMessage(describe(caught)); }
+  };
+
   if (screen === "loading") return <LoadingState />;
   if (screen === "error") return <ErrorState message={message ?? "Something went wrong."} retry={() => void load()} />;
   if (screen === "no-active-dog") return <EmptyState>Create a dog and complete its profile to start discovering candidates.</EmptyState>;
@@ -129,7 +145,7 @@ export function Discover() {
         <section data-testid="discovery-exhausted">
           <EmptyState>You've reviewed every available candidate for this dog.</EmptyState>
           <p>
-            <a href="#passed" onClick={(event) => { event.preventDefault(); setMessage(null); setScreen("passed"); }} style={{ marginRight: 16 }}>View passed dogs</a>
+            <a href="#passed" onClick={(event) => { event.preventDefault(); setMessage(null); void viewPassed(); }} style={{ marginRight: 16 }}>View passed dogs</a>
             <a href="#prefs" onClick={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("goto-tab", { detail: "dogs" })); }}>Edit preferences (in My Dogs)</a>
           </p>
         </section>

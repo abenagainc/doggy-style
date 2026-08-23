@@ -101,6 +101,13 @@ export async function reconsiderPassed(activeDogId: string, targetDogId: string)
   if (error) throw new AppError("CONFLICT", "Could not reconsider this candidate.");
 }
 
+/** Clears ALL passes for the active dog so passed candidates rejoin discovery. */
+export async function reconsiderAllPassed(activeDogId: string): Promise<number> {
+  const { data, error } = await supabase.rpc("reconsider_all_passed", { p_source_dog_id: activeDogId });
+  if (error) throw new AppError("CONFLICT", "Could not restore passed dogs.");
+  return (data as number) ?? 0;
+}
+
 export async function savePreferences(dogId: string, input: PrefsShape) {
   const parseBreeds = (raw: string) => raw.split(",").map((breed) => breed.trim()).filter(Boolean);
   const required = parseBreeds(input.requiredBreeds);
