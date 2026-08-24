@@ -1,6 +1,11 @@
 import { AppError } from "@doggy-style/domain";
 import { supabase } from "./supabase.js";
 
+/** Public URL for a photo in the public dog-photos bucket. */
+export function getPublicPhotoUrl(storagePath: string): string {
+  return supabase.storage.from("dog-photos").getPublicUrl(storagePath).data.publicUrl;
+}
+
 // --- Owner-side profile section editing ---
 
 export interface HealthSection { height_cm?: string; weight_kg?: string; general_health?: string; health_issues?: string }
@@ -101,10 +106,9 @@ export async function loadCandidateProfile(viewerDogId: string, candidateDogId: 
   return data as unknown as CandidateProfile;
 }
 
-/** Candidate photos live in other owners' storage scope — sign via RPC. */
-export async function candidatePhotoUrl(viewerDogId: string, storagePath: string | null): Promise<string> {
+/** Bucket is public; URLs are deterministic. Paths are unguessable UUIDs and
+ * visibility is enforced by only exposing eligible candidates' paths via RPC. */
+export async function candidatePhotoUrl(_viewerDogId: string, storagePath: string | null): Promise<string> {
   if (!storagePath) return "";
-  const { data, error } = await supabase.rpc("candidate_photo_url", { p_viewer_dog_id: viewerDogId, p_storage_path: storagePath });
-  if (error || !data) return "";
-  return data as string;
+  return getPublicPhotoUrl(storagePath);
 }
