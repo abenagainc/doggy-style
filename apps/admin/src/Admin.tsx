@@ -21,6 +21,14 @@ export function Admin() {
   const [blocks, setBlocks] = useState<BlockRow[] | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [cooldown, setCooldown] = useState<string>("");
+  const [weights, setWeights] = useState<Record<string, number> | null>(null);
+  const [weightsNote, setWeightsNote] = useState<string | null>(null);
+
+  const WEIGHT_KEYS = [
+    { key: "rank_weight_breed", label: "Breed match" },
+    { key: "rank_weight_distance", label: "Distance" },
+    { key: "rank_weight_verification", label: "Verification" },
+  ];
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -66,6 +74,32 @@ export function Admin() {
     if (!Number.isFinite(minutes) || minutes < 0) { setNote("Enter a non-negative number of minutes."); return; }
     const { error: err } = await supabase.rpc("set_setting", { p_key: "reinterest_cooldown_minutes", p_value: String(minutes) });
     setNote(err ? err.message : `Cooldown set to ${minutes} minute${minutes === 1 ? "" : "s"}.`);
+  };
+
+  const loadWeights = useCallback(async () => {
+    const entries = await Promise.all(WEIGHT_KEYS.map(async ({ key }) => {
+      const { data } = await supabase.rpc("get_setting", { p_key: key });
+      return [key, Number(data ?? 0)] as const;
+    }));
+    setWeights(Object.fromEntries(entries));
+  }, []);
+
+  useEffect(() => { if (authState === "ready") void loadWeights(); }, [authState, loadWeights]);
+
+  const saveWeights = async () => {
+    setWeightsNote(null);
+    if (!weights) return;
+    for (const { key } of WEIGHT_KEYS) {
+      const value = weights[key];
+      if (!Number.isFinite(value) || value < 0) { setWeightsNote(`${key} must be a non-negative number.`); return; }
+    }
+    let firstError: string | null = null;
+    for (const { key } of WEIGHT_KEYS) {
+      const { error: err } = await supabase.rpc("set_setting", { p_key: key, p_value: String(weights[key]) });
+      if (err && !firstError) firstError = `${key}: ${err.message}`;
+    }
+    setWeightsNote(firstError ?? "Ranking weights saved — feed order updates immediately.");
+    if (!firstError) void loadAll();
   };
 
   const setUserActive = async (ownerId: string, active: boolean) => {
@@ -149,6 +183,25 @@ export function Admin() {
           </label>
           <button onClick={() => void saveCooldown()}>Save</button>
           <p><small>Applied when a decline stamps the cooldown. Production target: 10080 (1 week).</small></p>
+
+          <hr />
+          <h3>Ranking weights (playground)</h3>
+          <p><small>Candidate score = breed·w₁ + distance·w₂ + verification·w₃. Signals are 0..1; higher weight = more influence on feed order. Changes apply immediately.</small></p>
+          {weights === null ? <p>Loading…</p> : (
+            <>
+              {WEIGHT_KEYS.map(({ key, label }) => (
+                <label key={key} style={{ display: "flex", alignItems: "center", gap: 12, margin: "8px 0" }}>
+                  <span style={{ width: 110 }}>{label}</span>
+                  <input type="range" min={0} max={3} step={0.1} value={weights![key] ?? 0}
+                    onChange={(e) => setWeights({ ...weights!, [key]: Number(e.target.value) })}
+                    style={{ flex: 1 }} />
+                  <code style={{ width: 36, textAlign: "right" }}>{(weights![key] ?? 0).toFixed(1)}</code>
+                </label>
+              ))}
+              <button onClick={() => void saveWeights()}>Save weights</button>
+              {weightsNote && <p role="status">{weightsNote}</p>}
+            </>
+          )}
         </section>
       )}
 
