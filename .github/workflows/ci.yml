@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build web
+        run: pnpm --filter @doggy-style/web build
+
+  migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Apply all migrations to a fresh database
+        run: supabase db reset
+
+      - name: Verify key functions exist
+        run: |
+          supabase db --help > /dev/null
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c "
+          select p.proname from pg_proc p
+          join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public'
+            and p.proname in ('eligible_candidates','list_passed_dogs','reconsider_all_passed',
+                              'list_my_connections','set_connection_archived','delete_connection_chat',
+                              'candidate_profile','can_upload_to_dog');
+          " | tee /tmp/fns.txt
+          grep -c -E "eligible_candidates|list_my_connections" /tmp/fns.txt
