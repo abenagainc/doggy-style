@@ -100,3 +100,11 @@ export async function loadCandidateProfile(viewerDogId: string, candidateDogId: 
   if (error) throw new AppError(error.message.includes("unavailable") ? "FORBIDDEN" : "NOT_FOUND", "This profile is unavailable.");
   return data as unknown as CandidateProfile;
 }
+
+/** Candidate photos live in other owners' storage scope — sign via RPC. */
+export async function candidatePhotoUrl(viewerDogId: string, storagePath: string | null): Promise<string> {
+  if (!storagePath) return "";
+  const { data, error } = await supabase.rpc("candidate_photo_url", { p_viewer_dog_id: viewerDogId, p_storage_path: storagePath });
+  if (error || !data) return "";
+  return data as string;
+}

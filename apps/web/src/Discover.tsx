@@ -3,12 +3,17 @@ import { AppError } from "@doggy-style/domain";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { restoreActiveDog } from "./dogs.js";
 import { listPassedDogs, reconsiderPassed, reconsiderAllPassed, photoSignedUrl } from "./dogsData.js";
+import { candidatePhotoUrl } from "./profileData.js";
 import { declineInterest, listReceivedInterests, loadFeed, passCandidate, sendInterest, type CandidateCard, type ReceivedInterest } from "./discovery.js";
 import { CandidateDetail } from "./CandidateDetail.js";
 
-function CandidatePhoto({ path }: { path: string | null }) {
+function CandidatePhoto({ path, viewerDogId }: { path: string | null; viewerDogId?: string | undefined }) {
   const [url, setUrl] = useState<string>("");
-  useEffect(() => { if (path) void photoSignedUrl(path).then(setUrl); }, [path]);
+  useEffect(() => {
+    if (!path) return;
+    if (viewerDogId) { void candidatePhotoUrl(viewerDogId, path).then(setUrl); }
+    else { void photoSignedUrl(path).then(setUrl); }
+  }, [path, viewerDogId]);
   return url
     ? <img src={url} alt="Candidate dog" style={{ maxWidth: 280, maxHeight: 280, borderRadius: 8 }} />
     : <div style={{ width: 280, height: 180, background: "#eee", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>🐶</div>;
@@ -125,7 +130,7 @@ export function Discover() {
         ) : (
           <article data-testid="candidate-card">
             <a href="#detail" onClick={(event) => { event.preventDefault(); setScreen("detail"); }} style={{ display: "block" }}>
-              <CandidatePhoto path={current.photoPath} />
+              <CandidatePhoto path={current.photoPath} viewerDogId={activeDogId ?? undefined} />
             </a>
             <h2>{current.name}</h2>
             <dl>
@@ -210,7 +215,7 @@ function PassedDogsList({ activeDogId, onChanged }: { activeDogId: string; onCha
         <ul>
           {(list ?? []).map((entry) => (
             <li key={entry.id} style={{ marginBottom: 12 }}>
-              <CandidatePhoto path={entry.photoPath} />
+              <CandidatePhoto path={entry.photoPath} viewerDogId={activeDogId} />
               <div>
                 <strong>{entry.name}</strong> · {entry.breed} · {entry.sex.toLowerCase()}{" "}
                 <button onClick={() => void reconsider(entry.id)}>Reconsider — show in feed again</button>
