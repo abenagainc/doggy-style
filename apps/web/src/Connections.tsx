@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppError } from "@doggy-style/domain";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { confirmProceeding, endConnection, listConnections, loadThread, sendMessage, setArchived, deleteChat, undeleteChat, type ChatMessage } from "./connectionsData.js";
@@ -142,6 +142,8 @@ function Chat({ connectionId, onBack }: { connectionId: string; onBack: () => vo
   const [status, setStatus] = useState<string>("ACTIVE");
   const [thread, setThread] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
+  // Auto-scroll target for new messages.
+  const threadEndRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     setState("loading"); setMessage(null);
@@ -152,11 +154,27 @@ function Chat({ connectionId, onBack }: { connectionId: string; onBack: () => vo
   }, [connectionId]);
   useEffect(() => { void load(); }, [load]);
 
+  // Live updates: refetch when the window regains focus, and poll while the tab is open.
+  useEffect(() => {
+    if (state !== "ready") return;
+    const onFocus = () => { void load(); };
+    window.addEventListener("focus", onFocus);
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 4000);
+    return () => { window.removeEventListener("focus", onFocus); clearInterval(interval); };
+  }, [load, state]);
+
+  // Scroll to the newest message whenever the thread changes.
+  useEffect(() => { threadEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [thread]);
+
   const submit = async () => {
     if (!conversationId || !draft.trim()) return;
+    const body = draft;
+    setDraft("");
+    // Optimistic: show the message immediately, then reconcile with the server.
     try {
-      await sendMessage(conversationId, draft);
-      setDraft("");
+      await sendMessage(conversationId, body);
       const result = await loadThread(connectionId);
       setThread(result.messages);
     } catch (caught) { setMessage(describe(caught)); }
@@ -191,6 +209,7 @@ function Chat({ connectionId, onBack }: { connectionId: string; onBack: () => vo
             {entry.mine ? "You" : "Them"}: {entry.body}
           </li>
         ))}
+        <div ref={threadEndRef} />
       </ul>
       {readOnly ? (
         <EmptyState>This connection is closed. The conversation is read-only.</EmptyState>
