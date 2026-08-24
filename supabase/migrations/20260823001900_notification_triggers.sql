@@ -39,26 +39,27 @@ for each row execute function public.notify_match();
 -- Message received: notify the other conversation participant.
 create or replace function public.notify_message() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare conn record; sender_is_a boolean; recipient uuid; recipient_dog uuid;
+declare connection_row record; recipient uuid; recipient_dog uuid;
 begin
-  select c.*, co.owner_a_id as a_id, co.owner_b_id as b_id
-    into conn
+  select co.id as connection_id, co.owner_a_id, co.owner_b_id, co.lower_dog_id, co.higher_dog_id
+    into connection_row
   from public.conversations c
   join public.connections co on co.id = c.connection_id
   where c.id = new.conversation_id;
-  if conn is null then return new; end if;
+  if connection_row is null then return new; end if;
 
   -- recipient = the participant who is NOT the sender
-  if conn.a_id = new.sender_owner_id then recipient := conn.b_id; else recipient := conn.a_id; end if;
-
-  -- recipient's dog in this connection (for dog-scoped notifications)
-  select case when conn.owner_a_id = recipient then conn.lower_dog_id else conn.higher_dog_id end
-    into recipient_dog
-    from public.connections conn2 where conn2.id = conn.connection_id;
+  if connection_row.owner_a_id = new.sender_owner_id then
+    recipient := connection_row.owner_b_id;
+    recipient_dog := connection_row.higher_dog_id;
+  else
+    recipient := connection_row.owner_a_id;
+    recipient_dog := connection_row.lower_dog_id;
+  end if;
 
   insert into public.notifications (owner_id, dog_id, type, payload)
   values (recipient, recipient_dog, 'MESSAGE',
-    jsonb_build_object('conversationId', new.conversation_id, 'connectionId', conn.connection_id,
+    jsonb_build_object('conversationId', new.conversation_id, 'connectionId', connection_row.connection_id,
                        'preview', left(new.body, 80)));
   return new;
 end;
