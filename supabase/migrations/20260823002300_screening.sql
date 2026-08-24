@@ -35,14 +35,13 @@ create policy "participants read screening answers" on public.screening_answers
   for select using (
     exists (
       select 1 from public.connections c
-      where c.id = connection_id and (c.owner_a_id = auth.uid() or c.owner_b_id = auth.uid())
+      where c.id = screening_answers.connection_id and (c.owner_a_id = auth.uid() or c.owner_b_id = auth.uid())
     )
     or exists (
       -- the asker (question's dog owner) also reads
-      select 1 from public.screening_answers sa
-      join public.dog_screening_questions q on q.id = sa.question_id
+      select 1 from public.dog_screening_questions q
       join public.dogs d on d.id = q.dog_id
-      where sa.id = id and d.owner_id = auth.uid()
+      where q.id = screening_answers.question_id and d.owner_id = auth.uid()
     )
   );
 create policy "answerers insert own answers" on public.screening_answers
