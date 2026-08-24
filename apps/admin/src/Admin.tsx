@@ -4,13 +4,14 @@ import { supabase } from "./supabase.js";
 interface Report { id: string; reason: string; details: string | null; status: string; reported_owner_id: string; created_at: string }
 interface OwnerRow { owner_id: string; display_name: string | null; dog_count: number; verification: string; created_at: string; is_staff: boolean }
 interface BlockRow { blocker_owner_id: string; blocked_owner_id: string; created_at: string }
+interface VerificationRow { id: string; owner_id: string; display_name: string | null; storage_path: string; note: string | null; submitted_at: string }
 type Stats = Record<string, number>;
 
 const card = "card";
 
 export function Admin() {
   const [authState, setAuthState] = useState<"loading" | "signed-out" | "ready" | "not-staff">("loading");
-  const [tab, setTab] = useState<"stats" | "reports" | "users" | "blocks">("stats");
+  const [tab, setTab] = useState<"stats" | "reports" | "verifications" | "users" | "blocks">("stats");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +21,7 @@ export function Admin() {
   const [owners, setOwners] = useState<OwnerRow[] | null>(null);
   const [blocks, setBlocks] = useState<BlockRow[] | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [verifications, setVerifications] = useState<VerificationRow[] | null>(null);
   const [cooldown, setCooldown] = useState<string>("");
   const [weights, setWeights] = useState<Record<string, number> | null>(null);
   const [weightsNote, setWeightsNote] = useState<string | null>(null);
@@ -39,18 +41,20 @@ export function Admin() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [r, o, b, s, cd] = await Promise.all([
+    const [r, o, b, s, cd, v] = await Promise.all([
       supabase.rpc("admin_list_reports"),
       supabase.rpc("admin_list_owners"),
       supabase.rpc("admin_list_blocks"),
       supabase.rpc("admin_stats"),
       supabase.rpc("get_setting", { p_key: "reinterest_cooldown_minutes" }),
+      supabase.rpc("admin_list_verification_submissions"),
     ]);
     setReports((r.data as Report[]) ?? []);
     setOwners((o.data as OwnerRow[]) ?? []);
     setBlocks((b.data as BlockRow[]) ?? []);
     setStats((s.data as Stats) ?? null);
     setCooldown(String(cd.data ?? "5"));
+    setVerifications((v.data as VerificationRow[]) ?? []);
   }, []);
 
   useEffect(() => { if (authState === "ready") void loadAll(); }, [authState, loadAll]);
@@ -157,6 +161,7 @@ export function Admin() {
       <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
         {tabBtn("stats", "Overview")}
         {tabBtn("reports", `Reports (${reports?.filter((r) => r.status === "OPEN").length ?? 0})`)}
+        {tabBtn("verifications", `Verifications (${verifications?.length ?? 0})`)}
         {tabBtn("users", "Users")}
         {tabBtn("blocks", "Blocks")}
       </div>
@@ -223,6 +228,21 @@ export function Admin() {
         </section>
       )}
 
+      {tab === "verifications" && (
+        <section>
+          <h2>Verification queue</h2>
+          {verifications === null ? <p>Loading…</p> : verifications.length === 0 ? <p className={card} style={{ padding: 14 }}>No pending submissions.</p> : verifications.map((v) => (
+            <div key={v.id} className={card} style={{ padding: 14, marginBottom: 10 }}>
+              <strong>{v.display_name ?? "(no name)"}</strong>{" "}
+              <small>{new Date(v.submitted_at).toLocaleString()}</small>
+              {v.note && <p style={{ margin: "6px 0" }}>Owner note: "{v.note}"</p>}
+              <small>owner: <code>{v.owner_id.substring(0, 8)}…</code></small>
+              <VerificationDecision submissionId={v.id} storagePath={v.storage_path} onDone={() => void loadAll()} />
+            </div>
+          ))}
+        </section>
+      )}
+
       {tab === "users" && (
         <section>
           {owners === null ? <p>Loading…</p> : owners.map((o) => (
@@ -257,5 +277,44 @@ export function Admin() {
         </section>
       )}
     </main>
+  );
+}
+
+/** Admin decision widget: shows the document (signed URL) + approve/reject with note. */
+function VerificationDecision({ submissionId, storagePath, onDone }: { submissionId: string; storagePath: string; onDone: () => void }) {
+  const [docUrl, setDocUrl] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void supabase.storage.from("verification-docs").createSignedUrl(storagePath, 600).then(({ data }) => setDocUrl(data?.signedUrl ?? null));
+  }, [storagePath]);
+
+  const decide = async (decision: "APPROVED" | "REJECTED") => {
+    setBusy(true);
+    await supabase.rpc("admin_decide_verification", { p_submission_id: submissionId, p_decision: decision, p_reviewer_note: note.trim() || null });
+    setBusy(false);
+    onDone();
+  };
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      {docUrl && (
+        <p>
+          <a href={docUrl} target="_blank" rel="noreferrer">View document ↗</a>
+          {/\.(png|jpe?g|webp|gif)$/i.test(storagePath) && (
+            <> · <img src={docUrl} alt="verification doc" style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, verticalAlign: "middle" }} /></>
+          )}
+        </p>
+      )}
+      <label style={{ margin: "4px 0 8px" }}>
+        Reviewer note (optional)
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. ID photo unclear" />
+      </label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button disabled={busy} onClick={() => void decide("APPROVED")} style={{ borderColor: "var(--good)", color: "var(--good)" }}>Approve</button>
+        <button disabled={busy} onClick={() => void decide("REJECTED")} style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>Reject</button>
+      </div>
+    </div>
   );
 }

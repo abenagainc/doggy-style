@@ -10,6 +10,7 @@ import { AuthGate } from "./AuthGate.js";
 import { ProfileSectionsEditor } from "./ProfileSections.js";
 import { IconAction, IconRow } from "./IconButton.js";
 import { NotificationBell } from "./NotificationBell.js";
+import { VerificationSection } from "./Verification.js";
 import * as dogsData from "./dogsData.js";
 import { photoSignedUrl } from "./dogsData.js";
 import * as interestsData from "./interestsData.js";
@@ -448,7 +449,7 @@ function Account() {
         <dt>Display name</dt><dd>{displayName || "—"}</dd>
         <dt>Verification</dt><dd data-status={verification.toLowerCase()}>{verification ? verification.replace("_", " ").toLowerCase() : "not started"}</dd>
       </dl>
-      <p><small>Verification workflows arrive in the next release. New accounts start unverified.</small></p>
+      <VerificationSection verificationStatus={verification} />
       <button onClick={() => void signOut()}>Sign out</button>
     </section>
   );
