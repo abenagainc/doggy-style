@@ -5,6 +5,7 @@ import { confirmProceeding, endConnection, listConnections, loadThread, sendMess
 import { supabase } from "./supabase.js";
 import * as dogsData from "./dogsData.js";
 import { IconAction, IconRow } from "./IconButton.js";
+import { pendingQuestions, answerQuestion, type PendingQuestion } from "./screeningData.js";
 import { blockOwner, otherOwnerInConnection, REPORT_REASONS, submitReport } from "./safety.js";
 
 type View = { kind: "loading" } | { kind: "error"; message: string } | { kind: "empty" }
@@ -175,6 +176,7 @@ function Chat({ connectionId, onBack }: { connectionId: string; onBack: () => vo
       {message && <p role="alert">{message}</p>}
       {note && <p role="status">{note}</p>}
       <ThreadPanel connectionId={connectionId} />
+      <ScreeningPanel connectionId={connectionId} />
       <ProceedSection connectionId={connectionId} onConfirmed={() => void load()} />
       <EndConnectionButton connectionId={connectionId} onEnded={() => setNote("Connection ended. The conversation is now read-only.")} />
       <SafetyPanel connectionId={connectionId} onNote={setNote} />
@@ -284,6 +286,53 @@ function ThreadPanel({ connectionId }: { connectionId: string }) {
         <button type="submit">Send</button>
       </form>
     </>
+  );
+}
+
+/** Proceeding section: polls connection status independently so both owners see the transition. */
+function ScreeningPanel({ connectionId }: { connectionId: string }) {
+  const [pending, setPending] = useState<PendingQuestion[] | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try { setPending(await pendingQuestions(connectionId)); }
+    catch { /* transient */ }
+  }, [connectionId]);
+
+  useEffect(() => {
+    void load();
+    // Re-check when messages arrive (answers may come via chat too).
+    const interval = setInterval(() => { if (document.visibilityState === "visible") void load(); }, 10000);
+    return () => clearInterval(interval);
+  }, [load]);
+
+  if (pending === null || pending.length === 0) return null;
+
+  const answer = async (questionId: string) => {
+    setErrorText(null);
+    try {
+      await answerQuestion(connectionId, questionId, drafts[questionId] ?? "");
+      setDrafts((d) => { const next = { ...d }; delete next[questionId]; return next; });
+      await load();
+    } catch (caught) { setErrorText(caught instanceof Error ? caught.message : "Failed."); }
+  };
+
+  return (
+    <section>
+      <h2>Screening questions</h2>
+      <p><small>{pending[0]?.for_dog_name}'s owner asks — answers are required before proceeding can be confirmed.</small></p>
+      {errorText && <p role="alert">{errorText}</p>}
+      {pending.map((q) => (
+        <div key={q.id} style={{ marginBottom: 10 }}>
+          <label>Q: {q.question}
+            <textarea value={drafts[q.id] ?? ""} onChange={(e) => setDrafts({ ...drafts, [q.id]: e.target.value })}
+              placeholder="Your answer…" aria-label={`Answer to ${q.question}`} />
+          </label>
+          <button disabled={!(drafts[q.id] ?? "").trim()} onClick={() => void answer(q.id)}>Submit answer</button>
+        </div>
+      ))}
+    </section>
   );
 }
 

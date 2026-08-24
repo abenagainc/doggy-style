@@ -11,6 +11,7 @@ import { ProfileSectionsEditor } from "./ProfileSections.js";
 import { IconAction, IconRow } from "./IconButton.js";
 import { NotificationBell } from "./NotificationBell.js";
 import { VerificationSection } from "./Verification.js";
+import { ScreeningQuestionsEditor } from "./ScreeningEditor.js";
 import * as dogsData from "./dogsData.js";
 import { photoSignedUrl } from "./dogsData.js";
 import * as interestsData from "./interestsData.js";
@@ -242,6 +243,11 @@ function DogEditor({ dog, onChanged }: { dog: dogsData.DogRow; onChanged: () => 
         onChange={(event) => { const file = event.target.files?.[0]; if (file) void run(() => dogsData.uploadPhoto(dog.id, file), "Photo added."); }} />
 
       <ProfileSectionsEditor dogId={dog.id} />
+
+      <h4>Screening questions</h4>
+      <p><small>The other side must answer these before you can both confirm proceeding. Keep it to the essentials (max 5).</small></p>
+      <ScreeningQuestionsEditor dogId={dog.id} />
+
 
       <h4>Availability</h4>
       <button disabled={busy} onClick={() => void run(() => dogsData.setAvailability(dog.id, dog.availability_status === "AVAILABLE" ? "UNAVAILABLE" : "AVAILABLE"), dog.availability_status === "AVAILABLE" ? "Marked unavailable." : "Marked available.")}>
