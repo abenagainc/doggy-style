@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppError } from "@doggy-style/domain";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { confirmProceeding, endConnection, listConnections, loadThread, sendMessage, setArchived, deleteChat, undeleteChat, type ChatMessage } from "./connectionsData.js";
+import { supabase } from "./supabase.js";
 import * as dogsData from "./dogsData.js";
 import { IconAction, IconRow } from "./IconButton.js";
 import { blockOwner, otherOwnerInConnection, REPORT_REASONS, submitReport } from "./safety.js";
@@ -203,14 +204,46 @@ function ThreadPanel({ connectionId }: { connectionId: string }) {
   }, [connectionId, refresh]);
   useEffect(() => { void load(); }, [load]);
 
+  // Realtime: subscribe to new messages on this conversation. Polling remains as
+  // a slow safety net (30s) in case the socket drops.
+  const [realtimeState, setRealtimeState] = useState<"connecting" | "live" | "polling">("connecting");
+  useEffect(() => {
+    if (state !== "ready" || !conversationId) return;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (pollInterval) return;
+      setRealtimeState("polling");
+      pollInterval = setInterval(() => {
+        if (document.visibilityState === "visible") void refresh();
+      }, 8000);
+    };
+    try {
+      const channel = supabase
+        .channel(`messages:${conversationId}`)
+        .on("postgres_changes",
+          { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+          () => { void refresh(); })
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") setRealtimeState("live");
+          else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") startPolling();
+        });
+      // Safety-net polling regardless (slow).
+      pollInterval = setInterval(() => {
+        if (document.visibilityState === "visible") void refresh();
+      }, 30000);
+      return () => { void supabase.removeChannel(channel); if (pollInterval) clearInterval(pollInterval); };
+    } catch {
+      startPolling();
+      return () => { if (pollInterval) clearInterval(pollInterval); };
+    }
+  }, [conversationId, state, refresh]);
+
+  // Window focus always refreshes.
   useEffect(() => {
     if (state !== "ready") return;
     const onFocus = () => { void refresh(); };
     window.addEventListener("focus", onFocus);
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
-    }, 4000);
-    return () => { window.removeEventListener("focus", onFocus); clearInterval(interval); };
+    return () => window.removeEventListener("focus", onFocus);
   }, [refresh, state]);
 
   // Scroll only when the message count actually grows (not on every poll).
