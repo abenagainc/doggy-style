@@ -105,19 +105,22 @@ export function Discover() {
   if (screen === "no-active-dog") return <EmptyState>Create a dog and complete its profile to start discovering candidates.</EmptyState>;
   if (mutual) {
     return (
-      <main>
-        <div data-testid="mutual-interest" style={{ textAlign: "center", padding: "48px 16px" }}>
-          <div style={{ fontSize: 64 }}>🎉🐶🎉</div>
-          <h1>It's a match!</h1>
-          <p><strong>{mutual.dogName}</strong>'s owner is interested in your dog too!</p>
-          <p>
-            <button onClick={() => { window.dispatchEvent(new CustomEvent("open-connection", { detail: mutual.connectionId })); setMutual(null); }}>
-              Start conversation
-            </button>
-          </p>
-          <p><a href="#keep" onClick={(event) => { event.preventDefault(); setMutual(null); setScreen("feed"); }}>Keep discovering</a></p>
-        </div>
-      </main>
+      <div data-testid="mutual-interest" style={{
+        position: "fixed", inset: 0, zIndex: 50,
+        background: "linear-gradient(#ff4458ee, #ff8a3dee)",
+        color: "#fff", display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", textAlign: "center", padding: 24,
+      }}>
+        <h1 style={{ fontSize: 48, fontWeight: 900, fontStyle: "italic", margin: 0 }}>It's a Match!</h1>
+        <div style={{ fontSize: 60, margin: "18px 0" }}>🐶💜🐶</div>
+        <p style={{ margin: 0 }}>You and <strong>{mutual.dogName}</strong>'s owner have liked each other.</p>
+        <button onClick={() => { window.dispatchEvent(new CustomEvent("open-connection", { detail: mutual.connectionId })); setMutual(null); }}
+          style={{ marginTop: 26, background: "#fff", color: "#ff4458", border: "none", fontWeight: 700, padding: "14px 40px", borderRadius: 999, fontSize: 17, cursor: "pointer" }}>
+          Start Conversation
+        </button>
+        <a href="#keep" onClick={(event) => { event.preventDefault(); setMutual(null); setScreen("feed"); }}
+          style={{ marginTop: 14, color: "#fff" }}>Keep swiping</a>
+      </div>
     );
   }
   if (screen === "passed" && activeDogId) {
