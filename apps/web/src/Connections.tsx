@@ -3,6 +3,7 @@ import { AppError } from "@doggy-style/domain";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import { confirmProceeding, endConnection, listConnections, loadThread, sendMessage, setArchived, deleteChat, undeleteChat, type ChatMessage } from "./connectionsData.js";
 import * as dogsData from "./dogsData.js";
+import { IconAction, IconRow } from "./IconButton.js";
 import { blockOwner, otherOwnerInConnection, REPORT_REASONS, submitReport } from "./safety.js";
 
 type View = { kind: "loading" } | { kind: "error"; message: string } | { kind: "empty" }
@@ -58,16 +59,27 @@ export function Connections({ activeDogId, openConnectionId, onOpened }: { activ
       <ul>
         {visible.map((row) => (
           <li key={row.id}>
-            <strong>{row.otherDogName}</strong> — <span data-status={row.status}>{row.status.toLowerCase()}</span>{" "}
-            <small>(your dog: {myDogNames.get(row.myDogId) ?? "unknown"})</small>{" "}
-            <button onClick={() => { void undeleteChat(row.id).then(() => setView({ kind: "chat", connectionId: row.id })).catch(() => undefined); }}>Chat</button>
-            {row.status !== "CLOSED" && <UnfriendButton connectionId={row.id} dogName={row.otherDogName} onDone={() => void load()} />}
-            {!row.archived ? (
-              <ArchiveButton connectionId={row.id} onDone={() => void load()} />
-            ) : (
-              <button onClick={() => void setArchived(row.id, false).then(() => void load()).catch(() => undefined)}>Unarchive</button>
-            )}
-            <DeleteChatButton connectionId={row.id} dogName={row.otherDogName} onDone={() => void load()} />
+            <div style={{ marginBottom: 6 }}>
+              <strong>{row.otherDogName}</strong> — <span data-status={row.status}>{row.status.toLowerCase()}</span>{" "}
+              <small>(your dog: {myDogNames.get(row.myDogId) ?? "unknown"})</small>
+            </div>
+            <IconRow style={{ justifyContent: "flex-start" }}>
+              <IconAction icon="chat" label="Chat" tone="primary" size={44}
+                onClick={() => { void undeleteChat(row.id).then(() => setView({ kind: "chat", connectionId: row.id })).catch(() => undefined); }} />
+              {row.status !== "CLOSED" && (
+                <IconAction icon="userX" label="Unfriend" tone="danger" size={44}
+                  onClick={() => { void endConnection(row.id).then(() => void load()).catch(() => undefined); }} />
+              )}
+              {!row.archived ? (
+                <IconAction icon="archive" label="Archive" tone="neutral" size={44}
+                  onClick={() => { void setArchived(row.id, true).then(() => void load()).catch(() => undefined); }} />
+              ) : (
+                <IconAction icon="unarchive" label="Unarchive" tone="neutral" size={44}
+                  onClick={() => { void setArchived(row.id, false).then(() => void load()).catch(() => undefined); }} />
+              )}
+              <IconAction icon="trash" label="Delete chat" tone="danger" size={44}
+                onClick={() => { void deleteChat(row.id).then(() => void load()).catch(() => undefined); }} />
+            </IconRow>
           </li>
         ))}
       </ul>

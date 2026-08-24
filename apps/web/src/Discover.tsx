@@ -6,6 +6,7 @@ import { listPassedDogs, reconsiderPassed, reconsiderAllPassed, photoSignedUrl }
 import { candidatePhotoUrl } from "./profileData.js";
 import { declineInterest, listReceivedInterests, loadFeed, passCandidate, sendInterest, type CandidateCard, type ReceivedInterest } from "./discovery.js";
 import { CandidateDetail } from "./CandidateDetail.js";
+import { IconAction, IconRow } from "./IconButton.js";
 
 function CandidatePhoto({ path, viewerDogId }: { path: string | null; viewerDogId?: string | undefined }) {
   const [url, setUrl] = useState<string>("");
@@ -141,9 +142,11 @@ export function Discover() {
               <dt>Trust</dt><dd>{current.verification}</dd>
             </dl>
             <p><a href="#profile" onClick={(event) => { event.preventDefault(); setScreen("detail"); }}>View full profile →</a></p>
-            <button onClick={() => void act(() => passCandidate(activeDogId!, current.id), "Passed.")}>Pass</button>
-            <button onClick={() => void act(() => sendInterest(activeDogId!, current.id, "NORMAL"), "Interest sent.")}>Interested</button>
-            <button onClick={() => void act(() => sendInterest(activeDogId!, current.id, "STRONG"), "Strong Interest sent.")}>Strong Interest</button>
+            <IconRow>
+              <IconAction icon="pass" label="Pass" tone="neutral" onClick={() => void act(() => passCandidate(activeDogId!, current.id), "Passed.")} />
+              <IconAction icon="heart" label="Interested" tone="success" onClick={() => void act(() => sendInterest(activeDogId!, current.id, "NORMAL"), "Interest sent.")} />
+              <IconAction icon="flame" label="Strong Interest" tone="primary" onClick={() => void act(() => sendInterest(activeDogId!, current.id, "STRONG"), "Strong Interest sent.")} />
+            </IconRow>
           </article>
         )
       ) : (

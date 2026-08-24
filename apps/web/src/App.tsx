@@ -8,6 +8,7 @@ import { Discover } from "./Discover.js";
 import { Connections } from "./Connections.js";
 import { AuthGate } from "./AuthGate.js";
 import { ProfileSectionsEditor } from "./ProfileSections.js";
+import { IconAction, IconRow } from "./IconButton.js";
 import * as dogsData from "./dogsData.js";
 import { photoSignedUrl } from "./dogsData.js";
 import * as interestsData from "./interestsData.js";
@@ -342,8 +343,10 @@ function Interests({ activeDogId }: { activeDogId: string }) {
         <ul>{(views?.received ?? []).map((view) => (
           <li key={view.id}>
             <strong>{view.otherDogName}</strong> sent {view.strength === "STRONG" ? "Strong Interest" : "Interest"}{" "}
-            <button onClick={() => void accept(view.otherDogId)}>Accept</button>{" "}
-            <button onClick={() => void decline(view.id)}>Decline</button>
+            <IconRow style={{ justifyContent: "flex-start" }}>
+              <IconAction icon="check" label="Accept" tone="success" size={44} onClick={() => void accept(view.otherDogId)} />
+              <IconAction icon="x" label="Decline" tone="danger" size={44} onClick={() => void decline(view.id)} />
+            </IconRow>
           </li>
         ))}</ul>
       )}
@@ -352,7 +355,9 @@ function Interests({ activeDogId }: { activeDogId: string }) {
         <ul>{(views?.sent ?? []).map((view) => (
           <li key={view.id}>
             You sent {view.strength === "STRONG" ? "Strong Interest" : "Interest"} to <strong>{view.otherDogName}</strong>{" "}
-            <button onClick={() => void withdraw(view.id)}>Withdraw</button>
+            <IconRow style={{ justifyContent: "flex-start" }}>
+              <IconAction icon="withdraw" label="Withdraw" tone="neutral" size={44} onClick={() => void withdraw(view.id)} />
+            </IconRow>
           </li>
         ))}</ul>
       )}
