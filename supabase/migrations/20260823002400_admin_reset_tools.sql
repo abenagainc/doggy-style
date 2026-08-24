@@ -6,7 +6,7 @@
 create or replace function public.admin_reset_dog_matching(p_dog_id uuid)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare stats jsonb; dog_owner uuid;
+declare stats jsonb; dog_owner uuid; affected_conns uuid[];
 begin
   if not public.is_staff() then raise exception 'Staff only'; end if;
   select owner_id into dog_owner from public.dogs where id = p_dog_id;
@@ -20,6 +20,10 @@ begin
     'connections_closed', (select count(*) from public.connections
       where lower_dog_id = p_dog_id or higher_dog_id = p_dog_id)
   ) into stats;
+
+  -- capture affected connection ids BEFORE deleting them
+  select coalesce(array_agg(id), '{}') into affected_conns
+    from public.connections where lower_dog_id = p_dog_id or higher_dog_id = p_dog_id;
 
   -- conversations + messages of affected connections
   delete from public.messages where conversation_id in (
@@ -45,8 +49,16 @@ begin
     where source_dog_id = p_dog_id or target_dog_id = p_dog_id;
   delete from public.candidate_passes
     where source_dog_id = p_dog_id or target_dog_id = p_dog_id;
-  -- notifications tied to this dog
+  -- notifications tied to this dog AND cross-side notifications referencing deleted rows
   delete from public.notifications where dog_id = p_dog_id;
+  delete from public.notifications n
+    where n.type in ('MATCH', 'MESSAGE', 'PROCEEDING_CONFIRMED')
+      and (
+        (n.payload->>'connectionId')::uuid = any(affected_conns)
+        or n.payload->>'fromDogId' in (
+          select id::text from public.dogs where id = p_dog_id
+        )
+      );
 
   return stats;
 end;
@@ -56,12 +68,19 @@ $$;
 create or replace function public.admin_reset_owner_matching(p_owner_id uuid)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare stats jsonb;
+declare stats jsonb; affected_conns uuid[];
 begin
   if not public.is_staff() then raise exception 'Staff only'; end if;
   if not exists (select 1 from public.owners where id = p_owner_id) then
     raise exception 'Owner not found';
   end if;
+
+  -- capture affected connection ids BEFORE deleting anything
+  select coalesce(array_agg(c.id), '{}') into affected_conns
+    from public.connections c
+    join public.dogs dl on dl.id = c.lower_dog_id
+    join public.dogs dh on dh.id = c.higher_dog_id
+    where dl.owner_id = p_owner_id or dh.owner_id = p_owner_id;
 
   select jsonb_build_object(
     'interests_removed', (select count(*) from public.interests i
@@ -118,6 +137,10 @@ begin
     using public.dogs d
     where ((cp.source_dog_id = d.id or cp.target_dog_id = d.id) and d.owner_id = p_owner_id);
   delete from public.notifications where owner_id = p_owner_id;
+  -- cross-side notifications referencing deleted connections (other party's alerts)
+  delete from public.notifications n
+    where n.type in ('MATCH', 'MESSAGE', 'PROCEEDING_CONFIRMED')
+      and (n.payload->>'connectionId')::uuid = any(affected_conns);
 
   return stats;
 end;
