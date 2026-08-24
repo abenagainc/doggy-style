@@ -24,7 +24,7 @@ input {
   background: var(--card); font-size: 0.95rem; font-family: inherit; width: 100%; margin-top: 4px;
 }
 label { display: block; margin: 10px 0; color: var(--ink-soft); font-size: 0.88rem; font-weight: 500; }
-li { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
+li, .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
 p[role="status"] { background: #e8f8ec; border: 1px solid #bfe8c8; color: #1e7c34; padding: 10px 14px; border-radius: var(--radius-sm); }
 p[role="alert"] { background: #feecea; border: 1px solid #f5c6c2; color: var(--bad); padding: 10px 14px; border-radius: var(--radius-sm); }
 [data-status="open"] { color: var(--bad); font-weight: 600; }

@@ -1,23 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "./supabase.js";
 
-interface Report {
-  id: string;
-  reason: string;
-  details: string | null;
-  status: string;
-  reported_owner_id: string;
-  created_at: string;
-}
+interface Report { id: string; reason: string; details: string | null; status: string; reported_owner_id: string; created_at: string }
+interface OwnerRow { owner_id: string; display_name: string | null; dog_count: number; verification: string; created_at: string; is_staff: boolean }
+interface BlockRow { blocker_owner_id: string; blocked_owner_id: string; created_at: string }
+type Stats = Record<string, number>;
+
+const card = "card";
 
 export function Admin() {
   const [authState, setAuthState] = useState<"loading" | "signed-out" | "ready" | "not-staff">("loading");
+  const [tab, setTab] = useState<"stats" | "reports" | "users" | "blocks">("stats");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
   const [reports, setReports] = useState<Report[] | null>(null);
+  const [owners, setOwners] = useState<OwnerRow[] | null>(null);
+  const [blocks, setBlocks] = useState<BlockRow[] | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [cooldown, setCooldown] = useState<string>("");
-  const [settingsNote, setSettingsNote] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -27,18 +30,22 @@ export function Admin() {
     });
   }, []);
 
-  const loadAdminData = useCallback(async () => {
-    const [reportsRes, cooldownRes] = await Promise.all([
+  const loadAll = useCallback(async () => {
+    const [r, o, b, s, cd] = await Promise.all([
       supabase.rpc("admin_list_reports"),
+      supabase.rpc("admin_list_owners"),
+      supabase.rpc("admin_list_blocks"),
+      supabase.rpc("admin_stats"),
       supabase.rpc("get_setting", { p_key: "reinterest_cooldown_minutes" }),
     ]);
-    setReports((reportsRes.data as Report[]) ?? []);
-    setCooldown(String(cooldownRes.data ?? "5"));
+    setReports((r.data as Report[]) ?? []);
+    setOwners((o.data as OwnerRow[]) ?? []);
+    setBlocks((b.data as BlockRow[]) ?? []);
+    setStats((s.data as Stats) ?? null);
+    setCooldown(String(cd.data ?? "5"));
   }, []);
 
-  useEffect(() => {
-    if (authState === "ready") void loadAdminData();
-  }, [authState, loadAdminData]);
+  useEffect(() => { if (authState === "ready") void loadAll(); }, [authState, loadAll]);
 
   const signIn = async () => {
     setError(null);
@@ -50,16 +57,30 @@ export function Admin() {
 
   const updateReport = async (id: string, status: string) => {
     await supabase.rpc("admin_update_report_status", { p_report_id: id, p_status: status });
-    await loadAdminData();
+    await loadAll();
   };
 
   const saveCooldown = async () => {
-    setSettingsNote(null);
+    setNote(null);
     const minutes = parseInt(cooldown, 10);
-    if (!Number.isFinite(minutes) || minutes < 0) { setSettingsNote("Enter a non-negative number of minutes."); return; }
+    if (!Number.isFinite(minutes) || minutes < 0) { setNote("Enter a non-negative number of minutes."); return; }
     const { error: err } = await supabase.rpc("set_setting", { p_key: "reinterest_cooldown_minutes", p_value: String(minutes) });
-    setSettingsNote(err ? err.message : `Cooldown set to ${minutes} minute${minutes === 1 ? "" : "s"}.`);
+    setNote(err ? err.message : `Cooldown set to ${minutes} minute${minutes === 1 ? "" : "s"}.`);
   };
+
+  const setUserActive = async (ownerId: string, active: boolean) => {
+    await supabase.rpc("admin_set_owner_active", { p_owner_id: ownerId, p_active: active });
+    setNote(active ? "Owner reactivated (dogs restored)." : "Owner deactivated (dogs archived, open connections closed).");
+    await loadAll();
+  };
+
+  const setVerification = async (ownerId: string, status: string) => {
+    await supabase.rpc("admin_set_verification", { p_owner_id: ownerId, p_status: status });
+    setNote(`Verification set to ${status}.`);
+    await loadAll();
+  };
+
+  const signOut = () => void supabase.auth.signOut().then(() => setAuthState("signed-out"));
 
   if (authState === "loading") return <p style={{ padding: 24 }}>Loading…</p>;
 
@@ -80,49 +101,108 @@ export function Admin() {
       <main style={{ maxWidth: 430, margin: "60px auto", padding: 16 }}>
         <h1>Doggy Style Admin</h1>
         <p role="alert">This account is not an admin. Staff access is granted by inserting your user id into <code>admin_staff</code>.</p>
-        <button onClick={() => void supabase.auth.signOut().then(() => setAuthState("signed-out"))}>Sign out</button>
+        <button onClick={signOut}>Sign out</button>
       </main>
     );
   }
 
+  const tabBtn = (id: typeof tab, label: string) => (
+    <button key={id} onClick={() => setTab(id)}
+      style={{ background: tab === id ? "var(--ink)" : "#fff", color: tab === id ? "#fff" : "var(--ink)" }}>
+      {label}
+    </button>
+  );
+
   return (
-    <main style={{ maxWidth: 640, margin: "0 auto", padding: 20 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <main style={{ maxWidth: 720, margin: "0 auto", padding: 20 }}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <h1 style={{ margin: 0 }}>Admin</h1>
-        <button onClick={() => void supabase.auth.signOut().then(() => setAuthState("signed-out"))}>Sign out</button>
+        <button onClick={signOut}>Sign out</button>
       </header>
 
-      <section style={{ marginTop: 24 }}>
-        <h2>Platform settings</h2>
-        <label>
-          Re-interest cooldown (minutes)
-          <input type="number" min={0} value={cooldown} onChange={(e) => setCooldown(e.target.value)} style={{ maxWidth: 140 }} />
-        </label>
-        <button onClick={() => void saveCooldown()}>Save</button>
-        {settingsNote && <p role="status">{settingsNote}</p>}
-        <p><small>Applied when a decline stamps the cooldown. Production target: 10080 (1 week).</small></p>
-      </section>
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+        {tabBtn("stats", "Overview")}
+        {tabBtn("reports", `Reports (${reports?.filter((r) => r.status === "OPEN").length ?? 0})`)}
+        {tabBtn("users", "Users")}
+        {tabBtn("blocks", "Blocks")}
+      </div>
 
-      <section style={{ marginTop: 28 }}>
-        <h2>Reports ({reports?.length ?? 0})</h2>
-        {reports === null ? <p>Loading…</p> : reports.length === 0 ? <p>No reports. 🎉</p> : (
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {reports.map((r) => (
-              <li key={r.id} style={{ border: "1px solid #e5e5ea", borderRadius: 12, padding: 14, marginBottom: 10 }}>
-                <strong>{r.reason}</strong> — <span data-status={r.status}>{r.status.toLowerCase()}</span>{" "}
-                <small>{new Date(r.created_at).toLocaleString()}</small>
-                {r.details && <p style={{ margin: "6px 0" }}>{r.details}</p>}
-                <small>owner: <code>{r.reported_owner_id.substring(0, 8)}…</code></small>
-                <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-                  {["OPEN", "IN_REVIEW", "CLOSED"].map((s) => (
-                    <button key={s} disabled={r.status === s} onClick={() => void updateReport(r.id, s)}>{s.replace("_", " ")}</button>
-                  ))}
+      {note && <p role="status">{note}</p>}
+
+      {tab === "stats" && (
+        <section className={card}>
+          <h2>Platform overview</h2>
+          {stats === null ? <p>Loading…</p> : (
+            <dl style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {Object.entries(stats).map(([k, v]) => (
+                <div key={k} style={{ background: "var(--paper)", borderRadius: 10, padding: "10px 14px" }}>
+                  <dt style={{ fontSize: "0.78rem", textTransform: "uppercase", color: "var(--ink-soft)" }}>{k.replace(/_/g, " ")}</dt>
+                  <dd style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>{v}</dd>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+              ))}
+            </dl>
+          )}
+          <hr />
+          <h3>Re-interest cooldown (minutes)</h3>
+          <label>
+            <input type="number" min={0} value={cooldown} onChange={(e) => setCooldown(e.target.value)} style={{ maxWidth: 140 }} />
+          </label>
+          <button onClick={() => void saveCooldown()}>Save</button>
+          <p><small>Applied when a decline stamps the cooldown. Production target: 10080 (1 week).</small></p>
+        </section>
+      )}
+
+      {tab === "reports" && (
+        <section>
+          {reports === null ? <p>Loading…</p> : reports.length === 0 ? <p className={card} style={{ padding: 14 }}>No reports. 🎉</p> : reports.map((r) => (
+            <div key={r.id} className={card} style={{ padding: 14, marginBottom: 10 }}>
+              <strong>{r.reason}</strong> — <span data-status={r.status}>{r.status.toLowerCase()}</span>{" "}
+              <small>{new Date(r.created_at).toLocaleString()}</small>
+              {r.details && <p style={{ margin: "6px 0" }}>{r.details}</p>}
+              <small>reported owner: <code>{r.reported_owner_id.substring(0, 8)}…</code></small>
+              <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                {["OPEN", "IN_REVIEW", "CLOSED"].map((s) => (
+                  <button key={s} disabled={r.status === s} onClick={() => void updateReport(r.id, s)}>{s.replace("_", " ").toLowerCase()}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {tab === "users" && (
+        <section>
+          {owners === null ? <p>Loading…</p> : owners.map((o) => (
+            <div key={o.owner_id} className={card} style={{ padding: 14, marginBottom: 10 }}>
+              <strong>{o.display_name ?? "(no name)"}</strong>{" "}
+              {o.is_staff && <span style={{ background: "var(--ink)", color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: "0.7rem" }}>STAFF</span>}{" "}
+              — {o.dog_count} dog{o.dog_count === 1 ? "" : "s"} · <span data-status={o.verification}>{o.verification.toLowerCase()}</span>{" "}
+              <small>joined {new Date(o.created_at).toLocaleDateString()}</small>
+              <small style={{ display: "block" }}><code>{o.owner_id}</code></small>
+              <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <select defaultValue="" onChange={(e) => { if (e.target.value) void setVerification(o.owner_id, e.target.value); e.currentTarget.selectedIndex = 0; }}>
+                  <option value="">Set verification…</option>
+                  {["NOT_STARTED", "PENDING", "APPROVED", "REJECTED"].map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                {o.dog_count > 0
+                  ? <button onClick={() => void setUserActive(o.owner_id, false)} style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>Deactivate (archive dogs + close connections)</button>
+                  : <button onClick={() => void setUserActive(o.owner_id, true)}>Reactivate</button>}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {tab === "blocks" && (
+        <section>
+          {blocks === null ? <p>Loading…</p> : blocks.length === 0 ? <p className={card} style={{ padding: 14 }}>No blocks.</p> : blocks.map((b, i) => (
+            <div key={`${b.blocker_owner_id}-${b.blocked_owner_id}-${i}`} className={card} style={{ padding: 12, marginBottom: 8 }}>
+              <code>{b.blocker_owner_id.substring(0, 8)}</code> blocked <code>{b.blocked_owner_id.substring(0, 8)}</code>{" "}
+              <small>{new Date(b.created_at).toLocaleString()}</small>
+            </div>
+          ))}
+        </section>
+      )}
     </main>
   );
 }
