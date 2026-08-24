@@ -201,7 +201,14 @@ function ThreadPanel({ connectionId }: { connectionId: string }) {
     return () => { window.removeEventListener("focus", onFocus); clearInterval(interval); };
   }, [refresh, state]);
 
-  useEffect(() => { threadEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [thread]);
+  // Scroll only when the message count actually grows (not on every poll).
+  const prevCount = useRef(0);
+  useEffect(() => {
+    if (thread.length > prevCount.current) {
+      threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevCount.current = thread.length;
+  }, [thread]);
 
   const submit = async () => {
     if (!conversationId || !draft.trim()) return;
