@@ -28,10 +28,10 @@ on conflict (id) do nothing;
 
 drop policy if exists "own verification docs read" on storage.objects;
 create policy "own verification docs read" on storage.objects for select
-  using (bucket_id = 'verification-docs' and owner_id = auth.uid());
+  using (bucket_id = 'verification-docs' and owner_id = (select auth.uid())::text);
 drop policy if exists "own verification docs insert" on storage.objects;
 create policy "own verification docs insert" on storage.objects for insert
-  with check (bucket_id = 'verification-docs' and owner_id = auth.uid());
+  with check (bucket_id = 'verification-docs' and owner_id = (select auth.uid())::text);
 drop policy if exists "staff verification docs read" on storage.objects;
 create policy "staff verification docs read" on storage.objects for select
   using (bucket_id = 'verification-docs' and public.is_staff());

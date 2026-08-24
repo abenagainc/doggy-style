@@ -223,7 +223,20 @@ function DogEditor({ dog, onChanged }: { dog: dogsData.DogRow; onChanged: () => 
 
       <h4>Photos</h4>
       {photos === null ? <LoadingState /> : photos.length === 0 ? <p>No photos yet — at least one is required.</p> : (
-        <ul>{photos.map((photo) => <li key={photo.id}><PhotoThumb path={photo.storage_path} /></li>)}</ul>
+        <ul style={{ paddingLeft: 0, listStyle: "none" }}>
+          {photos.map((photo) => (
+            <li key={photo.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <PhotoThumb path={photo.storage_path} />
+              <div>
+                {photo.is_cover && <span style={{ background: "var(--ink)", color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: "0.7rem", marginRight: 6 }}>COVER</span>}
+                {!photo.is_cover && <button disabled={busy} onClick={() => void run(() => dogsData.setCover(photo.id), "Cover updated.")}>Set cover</button>}
+                {" "}
+                <button disabled={busy} onClick={() => void run(() => dogsData.movePhoto(photo.id, -1), "Moved up.")}>←</button>
+                <button disabled={busy} onClick={() => void run(() => dogsData.movePhoto(photo.id, 1), "Moved down.")}>→</button>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
       <input type="file" accept="image/*" aria-label="Add photo" disabled={busy}
         onChange={(event) => { const file = event.target.files?.[0]; if (file) void run(() => dogsData.uploadPhoto(dog.id, file), "Photo added."); }} />

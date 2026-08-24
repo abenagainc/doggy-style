@@ -59,7 +59,17 @@ export async function photoSignedUrl(storagePath: string): Promise<string> {
   return data?.signedUrl ?? "";
 }
 
-export interface PhotoRow { id: string; storage_path: string }
+export interface PhotoRow { id: string; storage_path: string; is_cover: boolean }
+
+export async function setCover(photoId: string): Promise<void> {
+  const { error } = await supabase.rpc("set_dog_cover", { p_photo_id: photoId });
+  if (error) throw new AppError("FORBIDDEN", "Could not set cover photo.");
+}
+
+export async function movePhoto(photoId: string, direction: 1 | -1): Promise<void> {
+  const { error } = await supabase.rpc("move_dog_photo", { p_photo_id: photoId, p_direction: direction });
+  if (error) throw new AppError("CONFLICT", "Could not reorder photos.");
+}
 
 export async function listPhotos(dogId: string): Promise<PhotoRow[]> {
   const { data, error } = await supabase.from("dog_photos").select("id,storage_path").eq("dog_id", dogId).order("sort_order");
