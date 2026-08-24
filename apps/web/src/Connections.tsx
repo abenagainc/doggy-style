@@ -138,31 +138,59 @@ function Chat({ connectionId, onBack }: { connectionId: string; onBack: () => vo
   const [state, setState] = useState<"loading" | "error" | "ready">("loading");
   const [message, setMessage] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [conversationId, setConversationId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("ACTIVE");
-  const [thread, setThread] = useState<ChatMessage[]>([]);
-  const [draft, setDraft] = useState("");
-  // Auto-scroll target for new messages.
-  const threadEndRef = useRef<HTMLDivElement | null>(null);
 
+  // Initial load: conversation bootstrap + status. The thread itself lives in
+  // <ThreadPanel>, which polls and updates independently of this component.
   const load = useCallback(async () => {
     setState("loading"); setMessage(null);
     try {
-      const result = await loadThread(connectionId);
-      setConversationId(result.conversationId); setStatus(result.status); setThread(result.messages); setState("ready");
+      await loadThread(connectionId); // ensures the conversation row exists
+      setStatus(await connectionStatus(connectionId));
+      setState("ready");
     } catch (caught) { setMessage(describe(caught)); setState("error"); }
   }, [connectionId]);
   useEffect(() => { void load(); }, [load]);
 
-  // Silent refresh: updates thread/status without flashing the loading state.
+  if (state === "loading") return <LoadingState />;
+  if (state === "error") return <ErrorState message={message ?? "Something went wrong."} retry={() => void load()} />;
+
+  return (
+    <main>
+      <p><a href="#back" onClick={(event) => { event.preventDefault(); onBack(); }}>← All connections</a></p>
+      <h1>Conversation <span data-status={status.toLowerCase()}>({status.toLowerCase()})</span></h1>
+      {message && <p role="alert">{message}</p>}
+      {note && <p role="status">{note}</p>}
+      <ThreadPanel connectionId={connectionId} />
+      <ProceedSection connectionId={connectionId} onConfirmed={() => void load()} />
+      <EndConnectionButton connectionId={connectionId} onEnded={() => setNote("Connection ended. The conversation is now read-only.")} />
+      <SafetyPanel connectionId={connectionId} onNote={setNote} />
+    </main>
+  );
+}
+
+/** Only this subtree polls and re-renders on new messages. */
+function ThreadPanel({ connectionId }: { connectionId: string }) {
+  const [state, setState] = useState<"loading" | "error" | "ready">("loading");
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [thread, setThread] = useState<ChatMessage[]>([]);
+  const [draft, setDraft] = useState("");
+  const threadEndRef = useRef<HTMLDivElement | null>(null);
+  const [threadError, setThreadError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
-    try {
-      const result = await loadThread(connectionId);
-      setConversationId(result.conversationId); setStatus(result.status); setThread(result.messages);
-    } catch { /* transient poll failure: keep current view */ }
+    const result = await loadThread(connectionId);
+    setConversationId(result.conversationId);
+    setThread(result.messages);
   }, [connectionId]);
 
-  // Live updates: refetch when the window regains focus, and poll while the tab is open.
+  const load = useCallback(async () => {
+    setState("loading");
+    try { await refresh(); setState("ready"); }
+    catch (caught) { setState("error"); void describe(caught); }
+  }, [connectionId, refresh]);
+  useEffect(() => { void load(); }, [load]);
+
   useEffect(() => {
     if (state !== "ready") return;
     const onFocus = () => { void refresh(); };
@@ -173,44 +201,24 @@ function Chat({ connectionId, onBack }: { connectionId: string; onBack: () => vo
     return () => { window.removeEventListener("focus", onFocus); clearInterval(interval); };
   }, [refresh, state]);
 
-  // Scroll to the newest message whenever the thread changes.
   useEffect(() => { threadEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [thread]);
 
   const submit = async () => {
     if (!conversationId || !draft.trim()) return;
     const body = draft;
     setDraft("");
-    // Optimistic: show the message immediately, then reconcile with the server.
     try {
       await sendMessage(conversationId, body);
-      const result = await loadThread(connectionId);
-      setThread(result.messages);
-    } catch (caught) { setMessage(describe(caught)); }
-  };
-
-  const proceed = async () => {
-    try {
-      const next = await confirmProceeding(connectionId);
-      setStatus(next);
-      setNote(next === "PROCEEDING" ? "Both owners confirmed — proceeding! 🐾" : "Proceeding confirmation recorded. Waiting for the other owner.");
-    } catch (caught) { setMessage(describe(caught)); }
-  };
-
-  const end = async () => {
-    try { await endConnection(connectionId); setStatus("CLOSED"); setNote("Connection ended."); }
-    catch (caught) { setMessage(describe(caught)); }
+      await refresh();
+    } catch { setThreadError("Message could not be sent. Please try again."); }
   };
 
   if (state === "loading") return <LoadingState />;
-  if (state === "error") return <ErrorState message={message ?? "Something went wrong."} retry={() => void load()} />;
+  if (state === "error") return <ErrorState message="Couldn't load messages." retry={() => void load()} />;
 
-  const readOnly = status === "CLOSED";
   return (
-    <main>
-      <p><a href="#back" onClick={(event) => { event.preventDefault(); onBack(); }}>← All connections</a></p>
-      <h1>Conversation <span data-status={status}>({status.toLowerCase()})</span></h1>
-      {message && <p role="alert">{message}</p>}
-      {note && <p role="status">{note}</p>}
+    <>
+      {threadError && <p role="alert">{threadError}</p>}
       <ul data-testid="thread">
         {thread.map((entry) => (
           <li key={entry.id} style={{ textAlign: entry.mine ? "right" : "left" }}>
@@ -219,26 +227,54 @@ function Chat({ connectionId, onBack }: { connectionId: string; onBack: () => vo
         ))}
         <div ref={threadEndRef} />
       </ul>
-      {readOnly ? (
-        <EmptyState>This connection is closed. The conversation is read-only.</EmptyState>
-      ) : (
-        <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-          <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Write a message…" aria-label="Message" />
-          <button type="submit">Send</button>
-        </form>
-      )}
-      {!readOnly && status !== "PROCEEDING" && (
-        <section>
-          <h2>Proceeding</h2>
-          <p>Both owners must confirm before this connection proceeds. Confirming records your intent — it is not a payment or contract.</p>
-          <button onClick={() => void proceed()}>Confirm proceeding</button>
-        </section>
-      )}
-      {status === "PROCEEDING" && <p role="status">🐾 Both owners confirmed proceeding.</p>}
-      {!readOnly && <EndConnectionButton connectionId={connectionId} onEnded={() => { setStatus("CLOSED"); setNote("Connection ended. The conversation is now read-only."); }} />}
-      <SafetyPanel connectionId={connectionId} onNote={setNote} />
-    </main>
+      <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+        <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Write a message…" aria-label="Message" />
+        <button type="submit">Send</button>
+      </form>
+    </>
   );
+}
+
+/** Proceeding section: polls connection status independently so both owners see the transition. */
+function ProceedSection({ connectionId, onConfirmed }: { connectionId: string; onConfirmed: () => void }) {
+  const [status, setStatus] = useState("ACTIVE");
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try { setStatus(await connectionStatus(connectionId)); }
+      catch { /* ignore transient */ }
+    };
+    void check();
+    const interval = setInterval(() => { if (!cancelled && document.visibilityState === "visible") void check(); }, 4000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [connectionId]);
+
+  const proceed = async () => {
+    try {
+      const next = await confirmProceeding(connectionId);
+      setStatus(next);
+      setNote(next === "PROCEEDING" ? "Both owners confirmed — proceeding! 🐾" : "Proceeding confirmation recorded. Waiting for the other owner.");
+      if (next === "PROCEEDING") onConfirmed();
+    } catch (caught) { setNote(caught instanceof AppError ? caught.message : "Could not confirm."); }
+  };
+
+  if (status === "CLOSED") return null;
+  if (status === "PROCEEDING") return <p role="status">🐾 Both owners confirmed proceeding.</p>;
+  return (
+    <section>
+      <h2>Proceeding</h2>
+      <p>Both owners must confirm before this connection proceeds. Confirming records your intent — it is not a payment or contract.</p>
+      {note && <p role="status">{note}</p>}
+      <button onClick={() => void proceed()}>Confirm proceeding</button>
+    </section>
+  );
+}
+
+async function connectionStatus(connectionId: string): Promise<string> {
+  const result = await listConnections();
+  return result.find((c) => c.id === connectionId)?.status ?? "ACTIVE";
 }
 
 function EndConnectionButton({ connectionId, onEnded }: { connectionId: string; onEnded: () => void }) {
