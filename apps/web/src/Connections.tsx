@@ -154,16 +154,24 @@ function Chat({ connectionId, onBack }: { connectionId: string; onBack: () => vo
   }, [connectionId]);
   useEffect(() => { void load(); }, [load]);
 
+  // Silent refresh: updates thread/status without flashing the loading state.
+  const refresh = useCallback(async () => {
+    try {
+      const result = await loadThread(connectionId);
+      setConversationId(result.conversationId); setStatus(result.status); setThread(result.messages);
+    } catch { /* transient poll failure: keep current view */ }
+  }, [connectionId]);
+
   // Live updates: refetch when the window regains focus, and poll while the tab is open.
   useEffect(() => {
     if (state !== "ready") return;
-    const onFocus = () => { void load(); };
+    const onFocus = () => { void refresh(); };
     window.addEventListener("focus", onFocus);
     const interval = setInterval(() => {
-      if (document.visibilityState === "visible") void load();
+      if (document.visibilityState === "visible") void refresh();
     }, 4000);
     return () => { window.removeEventListener("focus", onFocus); clearInterval(interval); };
-  }, [load, state]);
+  }, [refresh, state]);
 
   // Scroll to the newest message whenever the thread changes.
   useEffect(() => { threadEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [thread]);
