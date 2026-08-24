@@ -9,6 +9,7 @@ import { Connections } from "./Connections.js";
 import { AuthGate } from "./AuthGate.js";
 import { ProfileSectionsEditor } from "./ProfileSections.js";
 import { IconAction, IconRow } from "./IconButton.js";
+import { NotificationBell } from "./NotificationBell.js";
 import * as dogsData from "./dogsData.js";
 import { photoSignedUrl } from "./dogsData.js";
 import * as interestsData from "./interestsData.js";
@@ -56,7 +57,10 @@ function Shell() {
   return (
     <main>
       <header>
-        <h1>Doggy Style 🐾</h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h1>Doggy Style 🐾</h1>
+          <NotificationBell />
+        </div>
         <DogSwitcher activeDogId={activeDogId} onSwitched={() => { void refreshActiveDog(); }} />
         <nav role="tablist">
           {(["dogs", "discover", "interests", "connections", "account"] as const).map((entry) => (
