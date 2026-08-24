@@ -47,7 +47,12 @@ async function sendDigest(email: string, items: NotifRow[]): Promise<boolean> {
     headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({ from: FROM, to: [email], subject: `🐾 ${items.length} new update${items.length === 1 ? "" : "s"} on Doggy Style`, html }),
   });
-  if (!res.ok) { console.error("resend error", email, await res.text()); return false; }
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error(`RESEND_FAIL status=${res.status} to=${email} from=${FROM} body=${errText}`);
+    return false;
+  }
+  console.log(`RESEND_OK to=${email}`);
   return true;
 }
 
