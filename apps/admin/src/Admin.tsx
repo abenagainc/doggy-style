@@ -245,6 +245,10 @@ export function Admin() {
 
       {tab === "users" && (
         <section>
+          <h2>Danger zone — reset matching data</h2>
+          <p><small>Picks an owner or dog and wipes all their interests, passes, connections, chats and screening answers. For unsticking tests. Irreversible.</small></p>
+          <ResetTool owners={owners ?? []} onNote={setNote} onDone={() => void loadAll()} />
+          <h2 style={{ marginTop: 28 }}>All users</h2>
           {owners === null ? <p>Loading…</p> : owners.map((o) => (
             <div key={o.owner_id} className={card} style={{ padding: 14, marginBottom: 10 }}>
               <strong>{o.display_name ?? "(no name)"}</strong>{" "}
@@ -277,6 +281,80 @@ export function Admin() {
         </section>
       )}
     </main>
+  );
+}
+
+/** Admin decision widget: shows the document (signed URL) + approve/reject with note. */
+function ResetTool({ owners, onNote, onDone }: {
+  owners: OwnerRow[];
+  onNote: (note: string | null) => void;
+  onDone: () => void;
+}) {
+  const [mode, setMode] = useState<"owner" | "dog">("owner");
+  const [ownerId, setOwnerId] = useState("");
+  const [dogId, setDogId] = useState("");
+  const [dogs, setDogs] = useState<{ id: string; name: string; owner_id: string }[]>([]);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (mode !== "dog" || dogs.length > 0) return;
+    void supabase.rpc("admin_list_dogs").then(({ data }) => {
+      setDogs((data as { id: string; name: string; owner_id: string }[]) ?? []);
+    });
+  }, [mode, dogs.length]);
+
+  const run = async () => {
+    setBusy(true); onNote(null);
+    try {
+      if (mode === "owner") {
+        const { data, error: err } = await supabase.rpc("admin_reset_owner_matching", { p_owner_id: ownerId });
+        if (err) throw new Error(err.message);
+        onNote(`Owner reset complete: ${JSON.stringify(data)}`);
+      } else {
+        const { data, error: err } = await supabase.rpc("admin_reset_dog_matching", { p_dog_id: dogId });
+        if (err) throw new Error(err.message);
+        onNote(`Dog reset complete: ${JSON.stringify(data)}`);
+      }
+      setConfirming(false); setOwnerId(""); setDogId("");
+      onDone();
+    } catch (caught) {
+      onNote(caught instanceof Error ? caught.message : "Reset failed.");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className={card} style={{ padding: 14 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <button onClick={() => setMode("owner")} style={{ background: mode === "owner" ? "var(--ink)" : "#fff", color: mode === "owner" ? "#fff" : "var(--ink)" }}>By owner</button>
+        <button onClick={() => setMode("dog")} style={{ background: mode === "dog" ? "var(--ink)" : "#fff", color: mode === "dog" ? "#fff" : "var(--ink)" }}>By dog</button>
+      </div>
+      {mode === "owner" && (
+        <label>Owner
+          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+            <option value="">Choose…</option>
+            {owners.map((o) => <option key={o.owner_id} value={o.owner_id}>{o.display_name ?? o.owner_id.substring(0, 8)} ({o.dog_count} dogs)</option>)}
+          </select>
+        </label>
+      )}
+      {mode === "dog" && (
+        <label>Dog
+          <select value={dogId} onChange={(e) => setDogId(e.target.value)}>
+            <option value="">Choose…</option>
+            {dogs.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.owner_id.substring(0, 8)})</option>)}
+          </select>
+        </label>
+      )}
+      {!confirming ? (
+        <button disabled={busy || (mode === "owner" ? !ownerId : !dogId)} onClick={() => setConfirming(true)}>Reset…</button>
+      ) : (
+        <div style={{ marginTop: 8 }}>
+          <p role="alert">Irreversible: wipes interests, passes, connections, chats and screening answers for this {mode}. Continue?</p>
+          <button disabled={busy} onClick={() => void run()} style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>{busy ? "…" : "Yes, reset everything"}</button>{" "}
+          <button disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
+        </div>
+      )}
+    </div>
   );
 }
 
