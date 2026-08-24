@@ -16,6 +16,9 @@ export async function listConnections(): Promise<MyConnection[]> {
 }
 
 async function conversationFor(connectionId: string): Promise<string> {
+  // A hidden (deleted-for-me) conversation is invisible to RLS, so the lookup returns null.
+  // Undelete first — this unhides the row and makes it visible again.
+  await supabase.rpc("undelete_connection_chat", { p_connection_id: connectionId });
   const existing = await supabase.from("conversations").select("id").eq("connection_id", connectionId).maybeSingle();
   if (existing.data?.id) return existing.data.id as string;
   const created = await supabase.from("conversations").insert({ connection_id: connectionId }).select("id").single();
