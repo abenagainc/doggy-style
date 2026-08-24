@@ -55,17 +55,27 @@ Deno.serve(async () => {
   if (!RESEND_API_KEY) return new Response("RESEND_API_KEY not set", { status: 500 });
 
   // Owners with unread notifications + their email + the unread rows.
-  const { data: owners, error } = await admin
+  // Email lives in auth.users, not public.owners — fetch separately via admin client.
+  const { data: notifs, error } = await admin
     .from("notifications")
-    .select("id,owner_id,type,payload,created_at,owners!inner(email)")
+    .select("id,owner_id,type,payload,created_at")
     .is("read_at", null)
     .order("created_at", { ascending: false })
     .limit(500);
   if (error) return new Response(`query error: ${error.message}`, { status: 500 });
 
+  const ownerIds = [...new Set((notifs ?? []).map((n: { owner_id: string }) => n.owner_id))] as string[];
+  const emailById = new Map<string, string>();
+  for (const uid of ownerIds) {
+    const { data: user } = await admin.auth.admin.getUserById(uid);
+    if (user?.user?.email) emailById.set(uid, user.user.email);
+  }
+
   const byOwner = new Map<string, { email: string; items: NotifRow[] }>();
-  for (const row of owners as unknown as (NotifRow & { owners: { email: string } })[]) {
-    const entry = byOwner.get(row.owner_id) ?? { email: row.owners.email, items: [] };
+  for (const row of (notifs ?? []) as NotifRow[]) {
+    const email = emailById.get(row.owner_id);
+    if (!email) continue;
+    const entry = byOwner.get(row.owner_id) ?? { email, items: [] };
     entry.items.push(row);
     byOwner.set(row.owner_id, entry);
   }
