@@ -1,101 +1,131 @@
-/* Doggy Style — global design system */
+/* Doggy Style — global design system (matches Wireframes.png: iOS-style, monochrome) */
 :root {
-  --brand: #c2571f;          /* warm rust */
-  --brand-dark: #9a4317;
-  --brand-light: #f7e8de;
-  --ink: #2d2a26;
-  --ink-soft: #6b645c;
-  --paper: #fdfaf7;
+  --ink: #1c1c1e;            /* near-black (buttons, headings) */
+  --ink-soft: #6e6e73;
+  --paper: #f2f2f7;          /* iOS grouped background */
   --card: #ffffff;
-  --line: #e8e0d8;
-  --good: #2e7d32;
-  --bad: #c62828;
-  --radius: 12px;
+  --line: #e5e5ea;
+  --good: #34c759;
+  --bad: #ff3b30;
+  --brand: #1c1c1e;
+  --brand-light: #f2f2f7;
+  --radius: 14px;
+  --radius-sm: 10px;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--ink);
   background: var(--paper);
-  line-height: 1.5;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
 }
 
-main { max-width: 640px; margin: 0 auto; padding: 16px; padding-bottom: 80px; }
-
-h1 { font-size: 1.6rem; margin: 8px 0 16px; color: var(--ink); }
-h2 { font-size: 1.25rem; margin: 24px 0 8px; }
-h3 { font-size: 1.05rem; margin: 18px 0 6px; }
-h4 { font-size: 0.95rem; margin: 14px 0 6px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.04em; }
-
-a { color: var(--brand); text-decoration: none; }
-a:hover { text-decoration: underline; }
-
-header h1 { margin-bottom: 4px; }
-header select {
-  padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line);
-  background: var(--card); font-size: 0.95rem; margin-left: 6px;
+/* Phone-frame centered column */
+main {
+  max-width: 430px;
+  margin: 0 auto;
+  padding: 12px 16px 90px;
+  min-height: 100vh;
 }
 
+h1 { font-size: 1.45rem; font-weight: 700; margin: 6px 0 14px; letter-spacing: -0.02em; }
+h2 { font-size: 1.15rem; font-weight: 700; margin: 20px 0 8px; }
+h3 { font-size: 1rem; font-weight: 600; margin: 14px 0 6px; }
+h4 { font-size: 0.78rem; font-weight: 600; margin: 14px 0 6px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; }
+p { margin: 6px 0; }
+small { color: var(--ink-soft); }
+
+a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { opacity: 0.7; }
+
+/* Header */
+header h1 { margin-bottom: 2px; }
+header select { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); font-size: 0.92rem; margin-left: 6px; }
+
+/* Bottom-anchored pill nav (iOS tab bar style, sticky) */
 nav[role="tablist"] {
-  display: flex; gap: 6px; margin: 12px 0; flex-wrap: wrap;
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 100%; max-width: 430px;
+  display: flex; justify-content: space-around;
+  background: var(--card); border-top: 1px solid var(--line);
+  padding: 8px 8px calc(10px + env(safe-area-inset-bottom, 8px));
+  z-index: 10;
 }
 nav[role="tablist"] button {
-  padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line);
-  background: var(--card); cursor: pointer; font-size: 0.95rem; color: var(--ink);
+  flex: 1; padding: 9px 4px; border-radius: 12px; border: none;
+  background: transparent; cursor: pointer; font-size: 0.85rem; color: var(--ink-soft);
+  font-weight: 500;
 }
 nav[role="tablist"] button[aria-selected="true"] {
-  background: var(--brand); border-color: var(--brand); color: white; font-weight: 600;
+  background: var(--ink); color: white; font-weight: 600;
 }
 
+/* Buttons: black pill primary, bordered secondary — like the wireframe */
 button {
-  padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line);
+  padding: 12px 16px; border-radius: 999px; border: 1.5px solid var(--ink);
   background: var(--card); cursor: pointer; font-size: 0.95rem; color: var(--ink);
-  transition: background 0.15s ease;
+  font-weight: 600; transition: opacity 0.15s ease;
+  font-family: inherit;
 }
-button:hover:not(:disabled) { background: var(--brand-light); }
-button:disabled { opacity: 0.5; cursor: wait; }
+button:hover:not(:disabled) { opacity: 0.75; }
+button:disabled { opacity: 0.4; cursor: wait; }
 
-form button[type="submit"], article > button:first-of-type {
-  background: var(--brand); border-color: var(--brand); color: white; font-weight: 600;
-}
+/* Primary action = solid black (wireframe "Create Account"/"Sign Up"/"Show Interest") */
+form button[type="submit"],
+article > button,
+section > button[type="button"] { background: var(--ink); color: white; }
 
+/* Inputs */
 input, textarea, select {
-  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
-  background: white; font-size: 0.95rem; font-family: inherit;
-  margin-top: 2px;
+  width: 100%;
+  padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--line);
+  background: var(--card); font-size: 0.95rem; font-family: inherit;
+  margin-top: 4px; color: var(--ink);
 }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--ink); outline-offset: -1px; }
 textarea { min-height: 70px; resize: vertical; }
-label { display: block; margin-bottom: 8px; color: var(--ink-soft); font-size: 0.9rem; }
+label { display: block; margin: 10px 0; color: var(--ink-soft); font-size: 0.88rem; font-weight: 500; }
 
-article {
+/* Cards: white rounded with hairline border (wireframe candidate cards) */
+article, li {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 16px; margin-bottom: 16px;
+  padding: 14px; margin-bottom: 12px;
 }
 
 ul { list-style: none; padding: 0; }
-li { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 8px; }
 
+/* Definition rows */
 dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 8px 0; }
-dt { color: var(--ink-soft); font-size: 0.88rem; }
+dt { color: var(--ink-soft); font-size: 0.85rem; }
 dd { margin: 0; font-weight: 500; }
 
-section[role="status"], p[role="status"] {
-  background: #ecf7ee; border: 1px solid #bfe3c4; color: var(--good);
-  padding: 8px 12px; border-radius: 8px; font-size: 0.92rem;
+/* Status messages */
+p[role="status"], section[role="status"] {
+  background: #e8f8ec; border: 1px solid #bfe8c8; color: #1e7c34;
+  padding: 10px 14px; border-radius: var(--radius-sm); font-size: 0.9rem;
 }
 p[role="alert"] {
-  background: #fdecea; border: 1px solid #f5c6c2; color: var(--bad);
-  padding: 8px 12px; border-radius: 8px; font-size: 0.92rem;
+  background: #feecea; border: 1px solid #f5c6c2; color: var(--bad);
+  padding: 10px 14px; border-radius: var(--radius-sm); font-size: 0.9rem;
 }
 
-[data-status="available"], [data-status="active"], [data-status="complete"], [data-status="proceeding"] {
-  color: var(--good); font-weight: 600;
-}
-[data-status="unavailable"], [data-status="closed"], [data-status="incomplete"] {
-  color: var(--ink-soft);
-}
+/* Status coloring */
+[data-status="available"], [data-status="active"], [data-status="complete"], [data-status="proceeding"] { color: var(--good); font-weight: 600; }
+[data-status="unavailable"], [data-status="closed"], [data-status="incomplete"] { color: var(--ink-soft); }
+
+/* Landing / hero (screen 01) */
+main > h1:first-child { text-align: center; margin-top: 48px; }
+
+/* Progress bar (dog profile completion, screen 06) */
+progress { width: 100%; height: 8px; border-radius: 999px; overflow: hidden; }
+
+/* Chat thread bubbles (screen 14) */
+ul[data-testid="thread"] li { border-radius: 16px; max-width: 85%; }
+ul[data-testid="thread"] li[style*="right"] { background: var(--ink); color: white; margin-left: auto; }
+ul[data-testid="thread"] li[style*="left"] { background: var(--card); }
 
 img { max-width: 100%; }
