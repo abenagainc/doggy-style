@@ -7,6 +7,16 @@ import { candidatePhotoUrl } from "./profileData.js";
 import { declineInterest, listReceivedInterests, loadFeed, passCandidate, sendInterest, type CandidateCard, type ReceivedInterest } from "./discovery.js";
 import { CandidateDetail } from "./CandidateDetail.js";
 import { IconAction, IconRow } from "./IconButton.js";
+import { SwipeDeck, SwipeActions } from "./SwipeDeck.js";
+
+function useCandidatePhotoUrl(activeDogId: string | null, photoPath: string | null): string {
+  const [url, setUrl] = useState<string>("");
+  useEffect(() => {
+    if (!activeDogId || !photoPath) { setUrl(""); return; }
+    void candidatePhotoUrl(activeDogId, photoPath).then(setUrl);
+  }, [activeDogId, photoPath]);
+  return url;
+}
 
 function CandidatePhoto({ path, viewerDogId }: { path: string | null; viewerDogId?: string | undefined }) {
   const [url, setUrl] = useState<string>("");
@@ -30,6 +40,7 @@ export function Discover() {
   const [received, setReceived] = useState<ReceivedInterest[] | null>(null);
   const [activeDogId, setActiveDogId] = useState<string | null>(null);
   const [mutual, setMutual] = useState<{ dogName: string; connectionId: string } | null>(null);
+  const currentPhotoUrl = useCandidatePhotoUrl(activeDogId, current?.photoPath ?? null);
 
   const load = useCallback(async () => {
     setScreen("loading"); setMessage(null); setCandidates(null); setCurrent(null);
@@ -129,25 +140,31 @@ export function Discover() {
         screen === "detail" && activeDogId ? (
           <CandidateDetail viewerDogId={activeDogId} candidateDogId={current.id} onBack={() => setScreen("feed")} />
         ) : (
-          <article data-testid="candidate-card">
-            <a href="#detail" onClick={(event) => { event.preventDefault(); setScreen("detail"); }} style={{ display: "block" }}>
-              <CandidatePhoto path={current.photoPath} viewerDogId={activeDogId ?? undefined} />
-            </a>
-            <h2>{current.name}</h2>
-            <dl>
-              <dt>Breed</dt><dd>{current.breed}</dd>
-              <dt>Sex</dt><dd>{current.sex}</dd>
-              <dt>Age</dt><dd>{current.ageYears} years</dd>
-              <dt>Distance</dt><dd>{current.distanceBand}</dd>
-              <dt>Trust</dt><dd>{current.verification}</dd>
-            </dl>
-            <p><a href="#profile" onClick={(event) => { event.preventDefault(); setScreen("detail"); }}>View full profile →</a></p>
-            <IconRow>
-              <IconAction icon="pass" label="Pass" tone="neutral" onClick={() => void act(() => passCandidate(activeDogId!, current.id), "Passed.")} />
-              <IconAction icon="heart" label="Interested" tone="success" onClick={() => void act(() => sendInterest(activeDogId!, current.id, "NORMAL"), "Interest sent.")} />
-              <IconAction icon="flame" label="Strong Interest" tone="primary" onClick={() => void act(() => sendInterest(activeDogId!, current.id, "STRONG"), "Strong Interest sent.")} />
-            </IconRow>
-          </article>
+          <div data-testid="candidate-card">
+            <SwipeDeck
+              cards={[{
+                id: current.id,
+                imageUrl: currentPhotoUrl ?? "",
+                title: `${current.name}, ${current.ageYears}y`,
+                subtitle: `${current.breed} · ${current.sex} · ${current.distanceBand} · ${current.verification}`,
+              }]}
+              onSwiped={(_card, dir) => {
+                if (dir === 1) void act(() => sendInterest(activeDogId!, current.id, "NORMAL"), "Interest sent.");
+                else void act(() => passCandidate(activeDogId!, current.id), "Passed.");
+              }}
+              emptyState={null}
+            />
+            <SwipeActions
+              onPass={() => void act(() => passCandidate(activeDogId!, current.id), "Passed.")}
+              onLike={() => void act(() => sendInterest(activeDogId!, current.id, "NORMAL"), "Interest sent.")}
+            />
+            <div style={{ display: "flex", justifyContent: "center", gap: 18, marginBottom: 14 }}>
+              <IconAction icon="flame" label="Strong Interest" tone="primary" size={44}
+                onClick={() => void act(() => sendInterest(activeDogId!, current.id, "STRONG"), "Strong Interest sent.")} />
+              <IconAction icon="eye" label="Full profile" tone="neutral" size={44}
+                onClick={() => setScreen("detail")} />
+            </div>
+          </div>
         )
       ) : (
         <section data-testid="discovery-exhausted">
