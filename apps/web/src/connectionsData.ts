@@ -70,3 +70,9 @@ export async function deleteChat(connectionId: string): Promise<void> {
   const { error } = await supabase.rpc("delete_connection_chat", { p_connection_id: connectionId });
   if (error) throw new AppError("CONFLICT", "Could not delete this chat.");
 }
+
+/** Reopening a deleted chat unhides it for that owner (messages intact). */
+export async function undeleteChat(connectionId: string): Promise<void> {
+  const { error } = await supabase.rpc("undelete_connection_chat", { p_connection_id: connectionId });
+  if (error) throw new AppError("FORBIDDEN", "Could not reopen this chat.");
+}

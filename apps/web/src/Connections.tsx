@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AppError } from "@doggy-style/domain";
 import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
-import { confirmProceeding, endConnection, listConnections, loadThread, sendMessage, setArchived, deleteChat, type ChatMessage } from "./connectionsData.js";
+import { confirmProceeding, endConnection, listConnections, loadThread, sendMessage, setArchived, deleteChat, undeleteChat, type ChatMessage } from "./connectionsData.js";
 import * as dogsData from "./dogsData.js";
 import { blockOwner, otherOwnerInConnection, REPORT_REASONS, submitReport } from "./safety.js";
 
@@ -60,7 +60,7 @@ export function Connections({ activeDogId, openConnectionId, onOpened }: { activ
           <li key={row.id}>
             <strong>{row.otherDogName}</strong> — <span data-status={row.status}>{row.status.toLowerCase()}</span>{" "}
             <small>(your dog: {myDogNames.get(row.myDogId) ?? "unknown"})</small>{" "}
-            <button onClick={() => setView({ kind: "chat", connectionId: row.id })}>Chat</button>
+            <button onClick={() => { void undeleteChat(row.id).then(() => setView({ kind: "chat", connectionId: row.id })).catch(() => undefined); }}>Chat</button>
             {row.status !== "CLOSED" && <UnfriendButton connectionId={row.id} dogName={row.otherDogName} onDone={() => void load()} />}
             {!row.archived ? (
               <ArchiveButton connectionId={row.id} onDone={() => void load()} />
@@ -91,7 +91,7 @@ function DeleteChatButton({ connectionId, dogName, onDone }: { connectionId: str
   if (!confirming) return <button onClick={() => setConfirming(true)}>Delete chat</button>;
   return (
     <span>
-      {" "}Delete the chat with {dogName}? Messages are removed for BOTH owners permanently.{" "}
+      {" "}Delete this chat for you? Messages stay visible to {dogName}'s owner but are removed from your view.{" "}
       <button
         disabled={busy}
         onClick={() => {
