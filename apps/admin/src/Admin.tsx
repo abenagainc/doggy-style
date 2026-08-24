@@ -114,7 +114,7 @@ export function Admin() {
                 {r.details && <p style={{ margin: "6px 0" }}>{r.details}</p>}
                 <small>owner: <code>{r.reported_owner_id.substring(0, 8)}…</code></small>
                 <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-                  {["OPEN", "UNDER_REVIEW", "CLOSED"].map((s) => (
+                  {["OPEN", "IN_REVIEW", "CLOSED"].map((s) => (
                     <button key={s} disabled={r.status === s} onClick={() => void updateReport(r.id, s)}>{s.replace("_", " ")}</button>
                   ))}
                 </div>

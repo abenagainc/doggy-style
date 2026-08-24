@@ -50,7 +50,7 @@ grant execute on function public.is_staff() to authenticated;
 grant execute on function public.get_setting(text) to authenticated;
 grant execute on function public.set_setting(text, text) to authenticated;
 
--- Reports queue: staff view of all reports with dog/owner context.
+-- Reports queue: staff view of all reports with owner context.
 create or replace function public.admin_list_reports()
 returns table (
   id uuid,
@@ -61,8 +61,8 @@ returns table (
   created_at timestamptz
 )
 language sql stable security definer set search_path = public as $$
-  select r.id, r.reason, r.details, r.status, r.reported_owner_id, r.created_at
-  from public.safety_reports r
+  select r.case_id, r.reason::text, r.details, r.status::text, r.target_owner_id, r.created_at
+  from public.reports r
   where public.is_staff()
   order by r.created_at desc;
 $$;
@@ -72,8 +72,10 @@ returns void
 language plpgsql security definer set search_path = public as $$
 begin
   if not public.is_staff() then raise exception 'Staff only'; end if;
-  if p_status not in ('OPEN', 'UNDER_REVIEW', 'CLOSED') then raise exception 'Invalid status'; end if;
-  update public.safety_reports set status = p_status where id = p_report_id;
+  if p_status not in ('OPEN', 'IN_REVIEW', 'CLOSED') then raise exception 'Invalid status'; end if;
+  update public.reports
+  set status = p_status::public.report_status, reviewed_at = now(), reviewed_by = auth.uid()
+  where case_id = p_report_id;
 end;
 $$;
 grant execute on function public.admin_list_reports() to authenticated;
