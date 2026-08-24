@@ -13,12 +13,12 @@ begin
   if dog_owner is null then raise exception 'Dog not found'; end if;
 
   select jsonb_build_object(
-    'interests_removed', count(*) from public.interests
-      where source_dog_id = p_dog_id or target_dog_id = p_dog_id,
-    'passes_removed', count(*) from public.candidate_passes
-      where source_dog_id = p_dog_id or target_dog_id = p_dog_id,
-    'connections_closed', count(*) from public.connections
-      where lower_dog_id = p_dog_id or higher_dog_id = p_dog_id
+    'interests_removed', (select count(*) from public.interests
+      where source_dog_id = p_dog_id or target_dog_id = p_dog_id),
+    'passes_removed', (select count(*) from public.candidate_passes
+      where source_dog_id = p_dog_id or target_dog_id = p_dog_id),
+    'connections_closed', (select count(*) from public.connections
+      where lower_dog_id = p_dog_id or higher_dog_id = p_dog_id)
   ) into stats;
 
   -- conversations + messages of affected connections
@@ -63,20 +63,23 @@ begin
     raise exception 'Owner not found';
   end if;
 
-  with affected as (
-    select id from public.dogs where owner_id = p_owner_id
-  )
   select jsonb_build_object(
-    'interests_removed', count(*) from public.interests
-      where source_dog_id in (select id from affected) or target_dog_id in (select id from affected),
-    'passes_removed', count(*) from public.candidate_passes
-      where source_dog_id in (select id from affected) or target_dog_id in (select id from affected),
-    'connections_closed', count(*) from public.connections
-      where lower_dog_id in (select id from affected) or higher_dog_id in (select id from affected),
-    'messages_removed', count(*) from public.messages m
+    'interests_removed', (select count(*) from public.interests i
+      join public.dogs d on d.id = i.source_dog_id or d.id = i.target_dog_id
+      where d.owner_id = p_owner_id),
+    'passes_removed', (select count(*) from public.candidate_passes cp
+      join public.dogs d on d.id = cp.source_dog_id or d.id = cp.target_dog_id
+      where d.owner_id = p_owner_id),
+    'connections_closed', (select count(*) from public.connections c
+      join public.dogs dl on dl.id = c.lower_dog_id
+      join public.dogs dh on dh.id = c.higher_dog_id
+      where dl.owner_id = p_owner_id or dh.owner_id = p_owner_id),
+    'messages_removed', (select count(*) from public.messages m
       join public.conversations cv on cv.id = m.conversation_id
       join public.connections c on c.id = cv.connection_id
-      where c.lower_dog_id in (select id from affected) or c.higher_dog_id in (select id from affected)
+      join public.dogs dl on dl.id = c.lower_dog_id
+      join public.dogs dh on dh.id = c.higher_dog_id
+      where dl.owner_id = p_owner_id or dh.owner_id = p_owner_id)
   ) into stats;
 
   -- messages first (depend on conversations), then the rest
