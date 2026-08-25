@@ -6,12 +6,17 @@ async function currentOwnerId() { const { data: { user } } = await supabase.auth
 
 export interface InterestView {
   id: string; direction: "received" | "sent"; strength: string;
-  otherDogName: string; otherDogId: string; createdAt: string;
+  otherDogName: string; otherDogId: string; otherCoverPath: string | null; createdAt: string;
 }
 
 async function dogName(dogId: string): Promise<string> {
   const { data } = await supabase.rpc("dog_public_name", { p_dog_id: dogId });
   return (data as string | null) ?? "A dog";
+}
+
+async function dogCoverPath(dogId: string): Promise<string | null> {
+  const { data } = await supabase.rpc("dog_cover_photo", { p_dog_id: dogId });
+  return (data as string | null) ?? null;
 }
 
 export async function listInterests(activeDogId: string): Promise<{ received: InterestView[]; sent: InterestView[] }> {
@@ -22,21 +27,27 @@ export async function listInterests(activeDogId: string): Promise<{ received: In
   ]);
   if (receivedRes.error || sentRes.error) throw new AppError("UNAVAILABLE", "We couldn't load your interests.");
   type Row = { id: string; strength: string; created_at: string; source_dog_id: string; target_dog_id: string };
-  // Resolve the other side's name via the public-name RPC (RLS hides other owners' dog rows).
+  // Resolve the other side's name + cover photo via RPCs (RLS hides other owners' dog rows).
   const names = new Map<string, string>();
+  const covers = new Map<string, string | null>();
   await Promise.all([...receivedRes.data ?? [], ...sentRes.data ?? []].map(async (row: Row) => {
     const otherId = row.source_dog_id === activeDogId ? row.target_dog_id : row.source_dog_id;
-    if (!names.has(otherId)) names.set(otherId, await dogName(otherId));
+    if (!names.has(otherId)) {
+      names.set(otherId, await dogName(otherId));
+      covers.set(otherId, await dogCoverPath(otherId));
+    }
   }));
+  const build = (row: Row, direction: "received" | "sent"): InterestView => {
+    const otherId = direction === "received" ? row.source_dog_id : row.target_dog_id;
+    return {
+      id: row.id, direction, strength: row.strength,
+      otherDogId: otherId, otherDogName: names.get(otherId) ?? "A dog",
+      otherCoverPath: covers.get(otherId) ?? null, createdAt: row.created_at,
+    };
+  };
   return {
-    received: ((receivedRes.data ?? []) as Row[]).map((row) => ({
-      id: row.id, direction: "received" as const, strength: row.strength,
-      otherDogId: row.source_dog_id, otherDogName: names.get(row.source_dog_id) ?? "A dog", createdAt: row.created_at,
-    })),
-    sent: ((sentRes.data ?? []) as Row[]).map((row) => ({
-      id: row.id, direction: "sent" as const, strength: row.strength,
-      otherDogId: row.target_dog_id, otherDogName: names.get(row.target_dog_id) ?? "A dog", createdAt: row.created_at,
-    })),
+    received: ((receivedRes.data ?? []) as Row[]).map((row) => build(row, "received")),
+    sent: ((sentRes.data ?? []) as Row[]).map((row) => build(row, "sent")),
   };
 }
 

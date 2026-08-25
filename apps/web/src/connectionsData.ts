@@ -3,15 +3,16 @@ import { supabase } from "./supabase.js";
 
 async function currentOwnerId() { const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new AppError("UNAUTHORIZED", "Please sign in."); return user.id; }
 
-export interface MyConnection { id: string; status: string; myDogId: string; otherDogId: string; otherDogName: string; archived: boolean; createdAt: string }
+export interface MyConnection { id: string; status: string; myDogId: string; otherDogId: string; otherDogName: string; otherDogCoverPath: string | null; archived: boolean; createdAt: string }
 
 /** Server-side list: shows the OTHER party's dog name (RLS hides their rows from the client). */
 export async function listConnections(): Promise<MyConnection[]> {
   const { data, error } = await supabase.rpc("list_my_connections");
   if (error) throw new AppError("UNAVAILABLE", "We couldn't load your connections. Has migration 00800 been applied?");
-  return (data ?? []).map((row: { id: string; status: string; my_dog_id: string; other_dog_id: string; other_dog_name: string; archived: boolean; created_at: string }) => ({
+  return (data ?? []).map((row: { id: string; status: string; my_dog_id: string; other_dog_id: string; other_dog_name: string; other_dog_cover: string | null; archived: boolean; created_at: string }) => ({
     id: row.id, status: row.status, myDogId: row.my_dog_id, otherDogId: row.other_dog_id,
-    otherDogName: row.other_dog_name ?? "Unknown", archived: Boolean(row.archived), createdAt: row.created_at,
+    otherDogName: row.other_dog_name ?? "Unknown", otherDogCoverPath: row.other_dog_cover ?? null,
+    archived: Boolean(row.archived), createdAt: row.created_at,
   }));
 }
 

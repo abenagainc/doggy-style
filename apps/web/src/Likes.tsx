@@ -71,16 +71,13 @@ export function Likes({ activeDogId, initialSubTab, onOpenConnection }: {
     try {
       // Received + sent (existing interests RPCs)
       const views = await interestsData.listInterests(activeDogId);
-      setReceived(views.received.map((r) => ({
-        key: r.id, dogId: r.otherDogId, name: r.otherDogName,
-        subtitle: r.strength === "STRONG" ? "Strong interest" : "Interest",
-        imageUrl: "",
-      })));
-      setSent(views.sent.map((v) => ({
+      const interestCard = async (v: interestsData.InterestView) => ({
         key: v.id, dogId: v.otherDogId, name: v.otherDogName,
-        subtitle: v.strength === "STRONG" ? "Strong interest sent" : "Interest sent",
-        imageUrl: "",
-      })));
+        subtitle: v.strength === "STRONG" ? "Strong interest" : "Interest",
+        imageUrl: v.otherCoverPath ? await candidatePhotoUrl(activeDogId, v.otherCoverPath) : "",
+      });
+      setReceived(await Promise.all(views.received.map(interestCard)));
+      setSent(await Promise.all(views.sent.map((v) => interestCard({ ...v, strength: v.strength }))));
 
       // Passed
       const passedRows = await listPassedDogs(activeDogId);
@@ -94,14 +91,11 @@ export function Likes({ activeDogId, initialSubTab, onOpenConnection }: {
       // Connections
       const conns = await listConnections();
       const visible = conns.filter((c) => c.myDogId === activeDogId && (archivedOnly ? c.archived : !c.archived));
-      const connCards = await Promise.all(visible.map(async (c) => {
-        // fetch other dog's cover photo via eligible-like path isn't available here; use signed url by id lookup
-        return {
-          key: c.id, connectionId: c.id, name: c.otherDogName,
-          subtitle: `${c.status.toLowerCase()}${c.archived ? " · archived" : ""}`,
-          imageUrl: "",
-        };
-      }));
+      const connCards = await Promise.all(visible.map(async (c) => ({
+        key: c.id, connectionId: c.id, name: c.otherDogName,
+        subtitle: `${c.status.toLowerCase()}${c.archived ? " · archived" : ""}`,
+        imageUrl: c.otherDogCoverPath ? await candidatePhotoUrl(activeDogId, c.otherDogCoverPath) : "",
+      })));
       setConnections(connCards);
       setState("ready");
     } catch (caught) {
