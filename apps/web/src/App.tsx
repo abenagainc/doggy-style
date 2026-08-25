@@ -14,6 +14,7 @@ import { VerificationSection } from "./Verification.js";
 import { ScreeningQuestionsEditor } from "./ScreeningEditor.js";
 import { Likes } from "./Likes.js";
 import { Messages } from "./Messages.js";
+import { PhotoGallery } from "./PhotoGallery.js";
 import * as dogsData from "./dogsData.js";
 import { photoSignedUrl } from "./dogsData.js";
 import * as interestsData from "./interestsData.js";
@@ -170,13 +171,28 @@ function MyDogs({ onActiveChanged }: { onActiveChanged: () => Promise<void> }) {
 
 function DogCard({ dog, onChanged }: { dog: dogsData.DogRow; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
+  const [photoPaths, setPhotoPaths] = useState<string[] | null>(null);
   const complete = dog.profile_status === "COMPLETE";
+
+  useEffect(() => {
+    void dogsData.listPhotos(dog.id).then((rows) => {
+      // cover first, then sort order
+      const sorted = [...rows].sort((a, b) => Number(b.is_cover) - Number(a.is_cover));
+      setPhotoPaths(sorted.map((p) => p.storage_path));
+    }).catch(() => setPhotoPaths([]));
+  }, [dog.id]);
+
   return (
     <article data-dog-id={dog.id}>
       <strong>{dog.name}</strong> · {dog.breed} · {dog.sex.toLowerCase()} ·{" "}
       <span data-status={complete ? "complete" : "incomplete"}>{complete ? "profile complete" : "profile incomplete"}</span> ·{" "}
       <span data-status={dog.availability_status.toLowerCase()}>{dog.availability_status.toLowerCase()}</span>{" "}
       <button onClick={() => setOpen(!open)}>{open ? "Close" : "Manage"}</button>
+      {photoPaths !== null && photoPaths.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <PhotoGallery paths={photoPaths} />
+        </div>
+      )}
       {open && <DogEditor dog={dog} onChanged={onChanged} />}
     </article>
   );
