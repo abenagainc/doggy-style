@@ -26,7 +26,7 @@ language sql stable security definer set search_path = public as $$
     case when da.owner_id = auth.uid() then c.higher_dog_id else c.lower_dog_id end as other_dog_id,
     case when da.owner_id = auth.uid() then db.name else da.name end as other_dog_name,
     public.dog_cover_photo(case when da.owner_id = auth.uid() then c.higher_dog_id else c.lower_dog_id end) as other_dog_cover,
-    coalesce(has_messages_calc.has_messages, false) as has_messages,
+    coalesce(last_msg.has_any_message, false) as has_messages,
     last_msg.body as last_message,
     last_msg.sent_at as last_message_at
   from public.connections c
@@ -34,13 +34,11 @@ language sql stable security definer set search_path = public as $$
   join public.dogs db on db.id = c.higher_dog_id
   left join public.conversations cv on cv.connection_id = c.id
   left join lateral (
-    select m.body, m.sent_at,
-           exists (select 1 from public.messages x where x.conversation_id = cv.id) as has_messages
-    from public.messages m
-    where m.conversation_id = cv.id
-    order by m.sent_at desc limit 1
+    select
+      (select count(*) from public.messages m where m.conversation_id = cv.id) > 0 as has_any_message,
+      (select m2.body from public.messages m2 where m2.conversation_id = cv.id order by m2.sent_at desc limit 1) as body,
+      (select m3.sent_at from public.messages m3 where m3.conversation_id = cv.id order by m3.sent_at desc limit 1) as sent_at
   ) last_msg on true
-  cross join lateral (select true as has_messages) has_messages_calc
   where (c.owner_a_id = auth.uid() or c.owner_b_id = auth.uid())
     and c.status <> 'CLOSED'
     -- hide conversations this user deleted (delete-for-me)
