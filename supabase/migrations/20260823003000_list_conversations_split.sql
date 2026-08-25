@@ -31,7 +31,7 @@ language sql stable security definer set search_path = public as $$
   from public.connections c
   join public.dogs da on da.id = c.lower_dog_id
   join public.dogs db on db.id = c.higher_dog_id
-  join public.conversations cv on cv.connection_id = c.id and not (
+  left join public.conversations cv on cv.connection_id = c.id and not (
     (cv.deleted_by_a = true and da.owner_id = auth.uid()) or (cv.deleted_by_b = true and db.owner_id = auth.uid())
   )
   where (c.owner_a_id = auth.uid() or c.owner_b_id = auth.uid())
