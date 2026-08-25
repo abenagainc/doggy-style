@@ -20,8 +20,7 @@ export function Connections({ activeDogId, openConnectionId, onOpened }: { activ
 
   useEffect(() => {
     if (openConnectionId) setView({ kind: "chat", connectionId: openConnectionId });
-    onOpened?.();
-  }, [openConnectionId, onOpened]);
+  }, [openConnectionId]);
 
   useEffect(() => {
     dogsData.listMyDogs().then((dogs) => setMyDogNames(new Map(dogs.map((d) => [d.id, d.name])))).catch(() => undefined);
