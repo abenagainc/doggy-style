@@ -12,11 +12,14 @@ import { IconAction, IconRow } from "./IconButton.js";
 import { NotificationBell } from "./NotificationBell.js";
 import { VerificationSection } from "./Verification.js";
 import { ScreeningQuestionsEditor } from "./ScreeningEditor.js";
+import { Likes } from "./Likes.js";
+import { Messages } from "./Messages.js";
 import * as dogsData from "./dogsData.js";
 import { photoSignedUrl } from "./dogsData.js";
 import * as interestsData from "./interestsData.js";
 
-type Tab = "dogs" | "discover" | "interests" | "connections" | "account";
+type Tab = "dogs" | "discover" | "likes" | "messages" | "account";
+type LikesSubTab = "received" | "sent" | "passes" | "connections";
 
 export function App() {
   return <AuthGate><Shell /></AuthGate>;
@@ -44,12 +47,14 @@ function Shell() {
     return () => window.removeEventListener("goto-tab", handler);
   }, []);
 
-  // "Start conversation" from the mutual-interest celebration.
+  // "Start conversation" from the mutual-interest celebration / notifications.
   const [pendingConnectionId, setPendingConnectionId] = useState<string | null>(null);
+  const [likesSubTab, setLikesSubTab] = useState<LikesSubTab>("received");
   useEffect(() => {
     const handler = (event: Event) => {
-      setTab("connections");
       setPendingConnectionId((event as CustomEvent<string>).detail);
+      setLikesSubTab("connections");
+      setTab("messages");
     };
     window.addEventListener("open-connection", handler);
     return () => window.removeEventListener("open-connection", handler);
@@ -65,8 +70,8 @@ function Shell() {
         </div>
         <DogSwitcher activeDogId={activeDogId} onSwitched={() => { void refreshActiveDog(); }} />
         <nav role="tablist">
-          {(["dogs", "discover", "interests", "connections", "account"] as const).map((entry) => (
-            <button key={entry} role="tab" aria-selected={tab === entry} onClick={() => setTab(entry)}>{(entry[0] ?? "").toUpperCase() + entry.slice(1)}</button>
+          {([["dogs", "Dogs"], ["discover", "Discover"], ["likes", "Likes"], ["messages", "Messages"], ["account", "Account"]] as const).map(([id, label]) => (
+            <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>
           ))}
         </nav>
       </header>
@@ -76,10 +81,10 @@ function Shell() {
         <MyDogs onActiveChanged={refreshActiveDog} />
       ) : tab === "discover" && activeDogId ? (
         <Discover />
-      ) : tab === "interests" && activeDogId ? (
-        <Interests activeDogId={activeDogId} />
-      ) : tab === "connections" && activeDogId ? (
-        <Connections activeDogId={activeDogId} openConnectionId={pendingConnectionId} onOpened={() => setPendingConnectionId(null)} />
+      ) : tab === "likes" && activeDogId ? (
+        <Likes activeDogId={activeDogId} initialSubTab={likesSubTab} onOpenConnection={(id) => { setPendingConnectionId(id); setTab("messages"); }} />
+      ) : tab === "messages" ? (
+        <Messages openConnectionId={pendingConnectionId} onOpened={() => setPendingConnectionId(null)} />
       ) : (
         <Account />
       )}
