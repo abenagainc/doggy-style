@@ -1,7 +1,8 @@
 # HANDOFF — current project state (read this first)
 
-Last updated: 2026-08-24. Scope changes live in docs/product/32-Scope_Amendments.md
-(which supersedes conflicting numbered specs).
+Last updated: 2026-08-26 (post nav-restructure). Scope changes live in
+docs/product/32-Scope_Amendments.md (which supersedes conflicting numbered specs).
+Architecture map: docs/ARCHITECTURE.md. Services: docs/SERVICES.md.
 
 ## What this is
 
@@ -31,15 +32,32 @@ P0 + P1 feature-complete, verified by scripts/regression-check.mjs (12 live chec
 1. **RLS is the recurring bug class**: read policies that join other owners' rows fail;
    UPDATE/INSERT policies missing = silent no-op writes. Cross-owner data must go
    through `security definer` RPCs (eligible_candidates, list_my_connections,
-   list_passed_dogs, candidate_profile, admin_* family).
+   list_passed_dogs, candidate_profile, list_my_conversations, dog_cover_photo,
+   admin_* family).
 2. **storage.objects.owner_id is TEXT** — cast auth.uid() in storage policies.
 3. **Never edit an already-applied migration** — create a new numbered one
-   (bit us twice: 00500, 02400).
+   (bit us three times: 00500, 02400, 02900). Same for functions whose return
+   type changes: `drop function` before `create or replace` (02600, 03000).
 4. **PL/pgSQL record from `select a.*, b.x` keeps only a's shape** — qualify explicitly.
+   LEFT JOIN + ON-clause predicates on the right table silently drop null rows —
+   put those predicates in WHERE with a `(right.id is null or ...)` guard.
 5. **Edge functions bind secrets at DEPLOY time** — redeploy after `supabase secrets set`.
-6. jsonb_build_object args cannot contain aggregate+FROM; use scalar subqueries.
-7. Resend test sender (`onboarding@resend.dev`) delivers ONLY to the account owner's
-   email until a domain is verified.
+6. **New enum values can't be used in the same transaction** that adds them —
+   split into two migrations (02700/02800).
+7. **Resend test sender** (`onboarding@resend.dev`) delivers ONLY to the account
+   owner's email until a domain is verified.
+8. **Dev servers die periodically** — if "can't be reached", relaunch; always use
+   `--host 127.0.0.1`.
+
+## Navigation structure (current, post-restructure)
+
+- Tabs: Dogs · Discover · **Likes** · **Messages** · Account
+- Likes sub-tabs: Received / Sent / Passes / Connections (mini-cards with cover-photo
+  thumbnails, round icon actions)
+- Messages page: stacked sections "New connections" (no chat yet) → "Active
+  connections" (last-message preview); chat opens directly, back returns to list
+- Placement exclusivity: a dog occupies exactly one of sent/passes/connections;
+  exception = passed+received may coexist; see docs/product/32 §1–2
 
 ## Testing workflow
 

@@ -10,15 +10,26 @@ with rationale. Where a numbered spec contradicts this file, **this file wins**.
 - "Interests" renamed to **Likes**.
 - Likes is a hub with four sub-tabs: **Likes received, Likes sent, Passes, Connections**
   (Connections moved out of the top nav into Likes).
-- New top-level **Messages** tab: conversation list opening chats directly.
+- New top-level **Messages** tab with two stacked sections:
+  - **New connections** — matched dogs where no chat has been initiated.
+  - **Active connections** — chats in progress, showing last-message preview + date.
+  A conversation moves from top to bottom once a message is sent or received.
+- Chat is initiated from Likes → Connections ("Chat" button) or Messages →
+  Active connections; it opens directly (no intermediate list page), and the
+  back button returns to the conversation list.
+- All lists (likes/passes/connections/messages) render as mini-cards with the
+  dog's cover-photo thumbnail; a dog's default/cover photo also fronts its
+  Discover card and its profile gallery (swipeable, dotted pagination).
 
 ## 2. Placement exclusivity model (spec 07 §state visibility)
 **Original:** interests and passes were independent lists; connections coexisted with them.
 **Amended:** a dog appears in exactly one of: Likes sent, Passes, or Connections —
 - Exception: after a pass, if the passed dog initiates a like, it shows in BOTH
   Passes and Likes received until acted on.
-- Once mutual (connection created), the profile leaves likes/passes entirely and
-  lives only under Connections.
+- Once mutual (connection created), the like rows flip to MATCHED and leave
+  likes/passes entirely; the profile lives only under Connections.
+- Within Messages, a connected dog sits under **New connections** until the
+  first message flows, then graduates to **Active connections**.
 
 ## 3. Discovery exhaustion → "View passed dogs"
 **Original:** passed dogs resurface via a separate review list only.
