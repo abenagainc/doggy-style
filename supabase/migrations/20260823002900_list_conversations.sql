@@ -34,6 +34,9 @@ language sql stable security definer set search_path = public as $$
   where (c.owner_a_id = auth.uid() or c.owner_b_id = auth.uid())
     and c.status <> 'CLOSED'
     and cv.id is not null   -- only connections where a chat was initiated
-  order by c.id, coalesce(last_message_at, c.created_at) desc;
+  order by c.id, coalesce(
+    (select m.sent_at from public.messages m where m.conversation_id = cv.id order by m.sent_at desc limit 1),
+    c.created_at
+  ) desc;
 $$;
 grant execute on function public.list_my_conversations() to authenticated;
