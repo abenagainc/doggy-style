@@ -4,20 +4,17 @@ import { listMyConversations, type ConversationRow } from "./conversationsData.j
 import { candidatePhotoUrl } from "./profileData.js";
 import { Connections } from "./Connections.js";
 
-type SubTab = "connections" | "messages";
-
 /**
- * Messages tab with two sub-tabs:
- * - Connections: connected dogs where no chat has been initiated (no messages yet)
- * - Messages: connected dogs with active chats, showing last message preview
- * A conversation moves between them once a message is sent or received.
+ * Messages tab: two stacked sections on one page.
+ * - "New connections": matched dogs where no chat has been initiated yet.
+ * - "Active connections": chats with at least one message, last-message preview.
+ * A conversation moves from the top section to the bottom once a message flows.
  */
 export function Messages({ activeDogId, openConnectionId, onOpened }: {
   activeDogId: string | null;
   openConnectionId: string | null;
   onOpened: () => void;
 }) {
-  const [subTab, setSubTab] = useState<SubTab>("connections");
   const [conversations, setConversations] = useState<ConversationRow[] | null>(null);
   const [urls, setUrls] = useState<Record<string, string>>({});
 
@@ -48,72 +45,54 @@ export function Messages({ activeDogId, openConnectionId, onOpened }: {
   const openChat = (c: ConversationRow) =>
     window.dispatchEvent(new CustomEvent<string>("open-connection", { detail: c.connectionId }));
 
-  const connectionsRows = (conversations ?? []).filter((c) => !c.hasMessages);
-  const messagesRows = (conversations ?? []).filter((c) => c.hasMessages);
-
-  const subTabBtn = (id: SubTab, label: string, count?: number) => (
-    <button key={id} onClick={() => setSubTab(id)}
-      style={{
-        borderRadius: 999, padding: "7px 14px",
-        background: subTab === id ? "var(--ink)" : "#fff",
-        color: subTab === id ? "#fff" : "var(--ink)",
-        border: "1px solid var(--line)", fontSize: "0.85rem",
-      }}>
-      {label}{count !== undefined && count > 0 ? ` (${count})` : ""}
-    </button>
-  );
+  const newConnections = (conversations ?? []).filter((c) => !c.hasMessages);
+  const activeChats = (conversations ?? []).filter((c) => c.hasMessages);
 
   return (
     <main>
       <h1>Messages</h1>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-        {subTabBtn("connections", "Connections", connectionsRows.length)}
-        {subTabBtn("messages", "Messages", messagesRows.length)}
-      </div>
 
-      {conversations === null ? <LoadingState /> : (
-        <>
-          {subTab === "connections" && (
-            connectionsRows.length === 0
-              ? <EmptyState>No new connections. Match with a dog to start chatting.</EmptyState>
-              : (
-                <ul style={{ paddingLeft: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                  {connectionsRows.map((c) => (
-                    <li key={c.connectionId} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      {thumb(c)}
-                      <div style={{ flex: 1 }}>
-                        <strong>{c.otherDogName}</strong>
-                        <div><small style={{ color: "var(--ink-soft)" }}>Connected — say hello!</small></div>
-                      </div>
-                      <button onClick={() => openChat(c)}>Chat</button>
-                    </li>
-                  ))}
-                </ul>
-              )
-          )}
+      <section>
+        <h2>New connections <small style={{ color: "var(--ink-soft)", fontWeight: 400 }}>({newConnections.length})</small></h2>
+        {conversations === null ? <LoadingState /> : newConnections.length === 0 ? (
+          <EmptyState>No new connections. Match with a dog to start chatting.</EmptyState>
+        ) : (
+          <ul style={{ paddingLeft: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+            {newConnections.map((c) => (
+              <li key={c.connectionId} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {thumb(c)}
+                <div style={{ flex: 1 }}>
+                  <strong>{c.otherDogName}</strong>
+                  <div><small style={{ color: "var(--ink-soft)" }}>Connected — say hello!</small></div>
+                </div>
+                <button onClick={() => openChat(c)}>Chat</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-          {subTab === "messages" && (
-            messagesRows.length === 0
-              ? <EmptyState>No active chats yet.</EmptyState>
-              : (
-                <ul style={{ paddingLeft: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                  {messagesRows.map((c) => (
-                    <li key={c.connectionId} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      {thumb(c)}
-                      <button
-                        onClick={() => openChat(c)}
-                        style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit", color: "inherit" }}>
-                        <strong>{c.otherDogName}</strong>
-                        <div><small style={{ color: "var(--ink-soft)" }}>{c.lastMessage ?? "…"}</small></div>
-                      </button>
-                      {c.lastMessageAt && <small style={{ color: "var(--ink-soft)" }}>{new Date(c.lastMessageAt).toLocaleDateString()}</small>}
-                    </li>
-                  ))}
-                </ul>
-              )
-          )}
-        </>
-      )}
+      <section>
+        <h2>Active connections <small style={{ color: "var(--ink-soft)", fontWeight: 400 }}>({activeChats.length})</small></h2>
+        {conversations === null ? <LoadingState /> : activeChats.length === 0 ? (
+          <EmptyState>No active chats yet.</EmptyState>
+        ) : (
+          <ul style={{ paddingLeft: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+            {activeChats.map((c) => (
+              <li key={c.connectionId} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {thumb(c)}
+                <button
+                  onClick={() => openChat(c)}
+                  style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit", color: "inherit" }}>
+                  <strong>{c.otherDogName}</strong>
+                  <div><small style={{ color: "var(--ink-soft)" }}>{c.lastMessage ?? "…"}</small></div>
+                </button>
+                {c.lastMessageAt && <small style={{ color: "var(--ink-soft)" }}>{new Date(c.lastMessageAt).toLocaleDateString()}</small>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </main>
   );
 }
