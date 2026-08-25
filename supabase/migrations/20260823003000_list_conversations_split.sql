@@ -2,6 +2,9 @@
 -- "connections" = connected, chat not yet initiated (no messages exchanged).
 -- "messages"    = connected with at least one message; shows last message preview.
 
+-- Return type changed since 02900 — must drop before redefining.
+drop function if exists public.list_my_conversations();
+
 create or replace function public.list_my_conversations()
 returns table (
   connection_id uuid,
