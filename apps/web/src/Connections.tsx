@@ -43,9 +43,15 @@ export function Connections({ activeDogId, openConnectionId, onOpened }: { activ
     void load();
   }, [load, openConnectionId]);
 
+  /** Leaving the chat: clear openConnectionId (returns to the Messages list). */
+  const leaveChat = useCallback(() => {
+    onOpened?.();          // clears pendingConnectionId in App
+    void load();           // reload list now that we're back
+  }, [onOpened, load]);
+
   if (view.kind === "loading") return <LoadingState />;
   if (view.kind === "error") return <ErrorState message={view.message} retry={() => void load()} />;
-  if (view.kind === "chat") return <Chat connectionId={view.connectionId} onBack={() => void load()} />;
+  if (view.kind === "chat") return <Chat connectionId={view.connectionId} onBack={leaveChat} />;
 
   const visible = (items ?? []).filter((row) => (showArchived ? row.archived : !row.archived));
   const archivedCount = (items ?? []).filter((row) => row.archived).length;
