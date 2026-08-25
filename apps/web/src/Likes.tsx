@@ -4,7 +4,7 @@ import { EmptyState, ErrorState, LoadingState } from "@doggy-style/ui";
 import * as interestsData from "./interestsData.js";
 import { listPassedDogs, reconsiderPassed } from "./dogsData.js";
 import { candidatePhotoUrl } from "./profileData.js";
-import { listConnections, setArchived, deleteChat, undeleteChat } from "./connectionsData.js";
+import { listConnections, setArchived, deleteChat } from "./connectionsData.js";
 import { IconAction, IconRow } from "./IconButton.js";
 
 export type LikesSubTabId = "received" | "sent" | "passes" | "connections";
@@ -190,11 +190,11 @@ export function Likes({ activeDogId, initialSubTab, onOpenConnection }: {
             {(item) => (
               <IconRow style={{ gap: 8 }}>
                 <IconAction icon="chat" label="Chat" tone="primary" size={44}
-                  onClick={() => { void undeleteChat(item.connectionId!).then(() => onOpenConnection(item.connectionId!)).catch(() => undefined); }} />
-                <IconAction icon="trash" label="Delete chat" tone="danger" size={44}
-                  onClick={() => { void deleteChat(item.connectionId!).then(() => void load()).catch(() => undefined); }} />
+                  onClick={() => onOpenConnection(item.connectionId!)} />
                 <IconAction icon="archive" label="Archive" size={44}
                   onClick={() => { void setArchived(item.connectionId!, true).then(() => void load()).catch(() => undefined); }} />
+                <IconAction icon="trash" label="Delete chat" tone="danger" size={44}
+                  onClick={() => { void deleteChat(item.connectionId!).then(() => void load()).catch(() => undefined); }} />
               </IconRow>
             )}
           </CardList>

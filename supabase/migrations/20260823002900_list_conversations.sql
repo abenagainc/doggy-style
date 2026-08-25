@@ -1,0 +1,39 @@
+-- Messages list: per-conversation metadata for the Messages tab.
+-- One row per conversation the caller participates in (dog-scoped by my_dog_id client-side),
+-- with last message preview + timestamp.
+
+create or replace function public.list_my_conversations()
+returns table (
+  connection_id uuid,
+  status text,
+  my_dog_id uuid,
+  other_dog_id uuid,
+  other_dog_name text,
+  other_dog_cover text,
+  last_message text,
+  last_message_at timestamptz,
+  archived boolean
+)
+language sql stable security definer set search_path = public as $$
+  select distinct on (c.id)
+    c.id,
+    c.status::text,
+    case when da.owner_id = auth.uid() then c.lower_dog_id else c.higher_dog_id end as my_dog_id,
+    case when da.owner_id = auth.uid() then c.higher_dog_id else c.lower_dog_id end as other_dog_id,
+    case when da.owner_id = auth.uid() then db.name else da.name end as other_dog_name,
+    public.dog_cover_photo(case when da.owner_id = auth.uid() then c.higher_dog_id else c.lower_dog_id end) as other_dog_cover,
+    (select m.body from public.messages m where m.conversation_id = cv.id order by m.sent_at desc limit 1) as last_message,
+    (select m.sent_at from public.messages m where m.conversation_id = cv.id order by m.sent_at desc limit 1) as last_message_at,
+    case when da.owner_id = auth.uid() then c.archived_by_a else c.archived_by_b end as archived
+  from public.connections c
+  join public.dogs da on da.id = c.lower_dog_id
+  join public.dogs db on db.id = c.higher_dog_id
+  left join public.conversations cv on cv.connection_id = c.id and not (
+    (cv.deleted_by_a = true and da.owner_id = auth.uid()) or (cv.deleted_by_b = true and db.owner_id = auth.uid())
+  )
+  where (c.owner_a_id = auth.uid() or c.owner_b_id = auth.uid())
+    and c.status <> 'CLOSED'
+    and cv.id is not null   -- only connections where a chat was initiated
+  order by c.id, coalesce(last_message_at, c.created_at) desc;
+$$;
+grant execute on function public.list_my_conversations() to authenticated;

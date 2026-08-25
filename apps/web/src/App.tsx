@@ -84,8 +84,8 @@ function Shell() {
         <Discover />
       ) : tab === "likes" && activeDogId ? (
         <Likes activeDogId={activeDogId} initialSubTab={likesSubTab} onOpenConnection={(id) => { setPendingConnectionId(id); setTab("messages"); }} />
-      ) : tab === "messages" ? (
-        <Messages openConnectionId={pendingConnectionId} onOpened={() => setPendingConnectionId(null)} />
+      ) : tab === "messages" && activeDogId ? (
+        <Messages activeDogId={activeDogId} openConnectionId={pendingConnectionId} onOpened={() => setPendingConnectionId(null)} />
       ) : (
         <Account />
       )}

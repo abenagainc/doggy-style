@@ -1,24 +1,38 @@
 import { useCallback, useEffect, useState } from "react";
 import { EmptyState, LoadingState } from "@doggy-style/ui";
-import { listConnections } from "./connectionsData.js";
+import { listMyConversations, type ConversationRow } from "./conversationsData.js";
+import { candidatePhotoUrl } from "./profileData.js";
 import { Connections } from "./Connections.js";
 
 /**
- * Messages tab: conversation list that opens chats directly.
- * Reuses Connections' chat view via openConnectionId; when no chat is open,
- * shows the active-connections list (chat-first presentation).
+ * Messages tab: dog-scoped conversation list (thumbnail + last message preview).
+ * Tapping a conversation opens the chat (Connections view in chat mode).
  */
-export function Messages({ openConnectionId, onOpened }: { openConnectionId: string | null; onOpened: () => void }) {
-  const [activeCount, setActiveCount] = useState<number | null>(null);
+export function Messages({ activeDogId, openConnectionId, onOpened }: {
+  activeDogId: string | null;
+  openConnectionId: string | null;
+  onOpened: () => void;
+}) {
+  const [conversations, setConversations] = useState<ConversationRow[] | null>(null);
+  const [urls, setUrls] = useState<Record<string, string>>({});
 
-  const count = useCallback(async () => {
-    const conns = await listConnections();
-    setActiveCount(conns.filter((c) => c.status !== "CLOSED" && !c.archived).length);
-  }, []);
+  const load = useCallback(async () => {
+    try {
+      const rows = await listMyConversations();
+      setConversations(activeDogId ? rows.filter((r) => r.myDogId === activeDogId) : rows);
+      // resolve thumbnails
+      const next: Record<string, string> = {};
+      await Promise.all(rows.map(async (r) => {
+        if (!activeDogId || !r.otherDogCoverPath) return;
+        if (!next[r.connectionId]) next[r.connectionId] = await candidatePhotoUrl(activeDogId, r.otherDogCoverPath);
+      }));
+      setUrls((prev) => ({ ...prev, ...next }));
+    } catch { setConversations([]); }
+  }, [activeDogId]);
 
-  useEffect(() => { void count(); }, [count]);
+  useEffect(() => { void load(); }, [load]);
 
-  // When a specific conversation is opened, render the full Connections view in chat mode.
+  // Opened a specific conversation → full chat view
   if (openConnectionId) {
     return <Connections openConnectionId={openConnectionId} onOpened={onOpened} />;
   }
@@ -26,12 +40,25 @@ export function Messages({ openConnectionId, onOpened }: { openConnectionId: str
   return (
     <main>
       <h1>Messages</h1>
-      {activeCount === null ? <LoadingState /> : (
-        <>
-          {activeCount === 0 && <EmptyState>No conversations yet. Match with a dog to start chatting.</EmptyState>}
-          {/* The connections list doubles as the message list — chat opens inline. */}
-          <Connections />
-        </>
+      {conversations === null ? <LoadingState /> : conversations.length === 0 ? (
+        <EmptyState>No messages yet. Start a chat from a connection.</EmptyState>
+      ) : (
+        <ul style={{ paddingLeft: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+          {conversations.map((c) => (
+            <li key={c.connectionId} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {urls[c.connectionId]
+                ? <img src={urls[c.connectionId]} alt="" style={{ width: 56, height: 56, borderRadius: 14, objectFit: "cover" }} />
+                : <div style={{ width: 56, height: 56, borderRadius: 14, background: "#e5e5ea", display: "flex", alignItems: "center", justifyContent: "center" }}>🐶</div>}
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent<string>("open-connection", { detail: c.connectionId }))}
+                style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit", color: "inherit" }}>
+                <strong>{c.otherDogName}</strong>
+                <div><small style={{ color: "var(--ink-soft)" }}>{c.lastMessage ?? "No messages yet"}</small></div>
+              </button>
+              {c.lastMessageAt && <small style={{ color: "var(--ink-soft)" }}>{new Date(c.lastMessageAt).toLocaleDateString()}</small>}
+            </li>
+          ))}
+        </ul>
       )}
     </main>
   );
