@@ -27,6 +27,7 @@ export function Connections({ activeDogId, openConnectionId, onOpened }: { activ
   }, []);
 
   const load = useCallback(async () => {
+    if (openConnectionId) return; // opening straight into a chat; skip list loading
     setView({ kind: "loading" }); setNote(null);
     try {
       let rows = await listConnections();
@@ -35,8 +36,12 @@ export function Connections({ activeDogId, openConnectionId, onOpened }: { activ
       const visible = showArchived ? rows.filter((row) => row.archived) : rows.filter((row) => !row.archived);
       setView(visible.length ? { kind: "list" } : { kind: "empty" });
     } catch (caught) { setView({ kind: "error", message: describe(caught) }); }
-  }, [activeDogId, showArchived]);
-  useEffect(() => { void load(); }, [load]);
+  }, [activeDogId, showArchived, openConnectionId]);
+  useEffect(() => {
+    // Opening straight into a chat: initialize the chat view and don't load the list.
+    if (openConnectionId) { setView({ kind: "chat", connectionId: openConnectionId }); return; }
+    void load();
+  }, [load, openConnectionId]);
 
   if (view.kind === "loading") return <LoadingState />;
   if (view.kind === "error") return <ErrorState message={view.message} retry={() => void load()} />;
