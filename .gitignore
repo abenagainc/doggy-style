@@ -9,3 +9,5 @@ check-auth.mjs
 .DS_Store
 .vercel
 .env*
+# Admin build output (built into web/public/admin by Vite)
+apps/web/public/admin/
