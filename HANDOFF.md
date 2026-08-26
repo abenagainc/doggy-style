@@ -7,7 +7,7 @@ Architecture map: docs/ARCHITECTURE.md. Services: docs/SERVICES.md.
 ## What this is
 
 Doggy Style — dog-breeding matching platform. TypeScript/React/Supabase pnpm monorepo.
-Deployed: https://doggy-style-drab.vercel.app (auto-deploys on push to main).
+Deployed: https://match.abenaga.com (auto-deploys on push to main).
 P0 + P1 feature-complete, verified by scripts/regression-check.mjs (12 live checks).
 
 ## Environments & access
@@ -83,7 +83,7 @@ delete-for-me chat, public photo bucket, trigger-driven notifications.
 1. Legal ToS/Privacy text (owner/lawyer)
 2. Domain purchase + Resend domain verification (real email delivery)
 3. Set cooldown to 10080 min in admin when testing ends
-4. Optional: admin app hosting (currently localhost-only), notification preferences
+4. Optional: admin app hosting (currently localhost-only; deployed to https://match.abenaga.com/admin), notification preferences
 
 ## P2 (explicitly out of scope)
 

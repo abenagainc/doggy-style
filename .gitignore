@@ -7,3 +7,5 @@ coverage
 supabase/.temp
 check-auth.mjs
 .DS_Store
+.vercel
+.env*

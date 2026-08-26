@@ -15,7 +15,7 @@ Everything external Doggy Style depends on. Owner accounts: **abenagainc**
 | | |
 |---|---|
 | Purpose | Hosting for the web app (`apps/web`) |
-| URL | https://doggy-style-drab.vercel.app |
+| URL | https://match.abenaga.com |
 | Setup | Connected to the GitHub repo — every push to `main` auto-deploys (~1 min) |
 | Config | Root `vercel.json`: pnpm workspace build (`pnpm --filter @doggy-style/web build`), output `apps/web/dist`, SPA rewrites |
 | Env vars (dashboard-set) | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` |
