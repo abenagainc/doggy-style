@@ -1,9 +1,15 @@
 import { AppError } from "@doggy-style/domain";
 import { supabase } from "./supabase.js";
 
-/** Public URL for a photo in the public dog-photos bucket. */
-export function getPublicPhotoUrl(storagePath: string): string {
-  return supabase.storage.from("dog-photos").getPublicUrl(storagePath).data.publicUrl;
+/**
+ * Public URL for a photo in the public dog-photos bucket.
+ * width: optional — uses Supabase image transformation to serve a resized
+ * rendition (cached at the CDN) instead of the original multi-MB upload.
+ * Thumbnails (56-96px lists) should request 128; cards 512.
+ */
+export function getPublicPhotoUrl(storagePath: string, width?: 128 | 256 | 512): string {
+  const base = supabase.storage.from("dog-photos").getPublicUrl(storagePath).data.publicUrl;
+  return width ? `${base}?width=${width}&quality=75` : base;
 }
 
 // --- Owner-side profile section editing ---
@@ -108,7 +114,7 @@ export async function loadCandidateProfile(viewerDogId: string, candidateDogId: 
 
 /** Bucket is public; URLs are deterministic. Paths are unguessable UUIDs and
  * visibility is enforced by only exposing eligible candidates' paths via RPC. */
-export async function candidatePhotoUrl(_viewerDogId: string, storagePath: string | null): Promise<string> {
+export async function candidatePhotoUrl(_viewerDogId: string, storagePath: string | null, width?: 128 | 256 | 512): Promise<string> {
   if (!storagePath) return "";
-  return getPublicPhotoUrl(storagePath);
+  return getPublicPhotoUrl(storagePath, width);
 }

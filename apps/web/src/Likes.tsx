@@ -74,7 +74,7 @@ export function Likes({ activeDogId, initialSubTab, onOpenConnection }: {
       const interestCard = async (v: interestsData.InterestView) => ({
         key: v.id, dogId: v.otherDogId, name: v.otherDogName,
         subtitle: v.strength === "STRONG" ? "Strong interest" : "Interest",
-        imageUrl: v.otherCoverPath ? await candidatePhotoUrl(activeDogId, v.otherCoverPath) : "",
+        imageUrl: v.otherCoverPath ? await candidatePhotoUrl(activeDogId, v.otherCoverPath, 128) : "",
       });
       setReceived(await Promise.all(views.received.map(interestCard)));
       setSent(await Promise.all(views.sent.map((v) => interestCard({ ...v, strength: v.strength }))));
@@ -84,7 +84,7 @@ export function Likes({ activeDogId, initialSubTab, onOpenConnection }: {
       const passedCards = await Promise.all(passedRows.map(async (p) => ({
         key: p.id, dogId: p.id, name: p.name,
         subtitle: `${p.breed} · ${p.sex}`,
-        imageUrl: p.photoPath ? await candidatePhotoUrl(activeDogId, p.photoPath) : "",
+        imageUrl: p.photoPath ? await candidatePhotoUrl(activeDogId, p.photoPath, 128) : "",
       })));
       setPassed(passedCards);
 
@@ -94,7 +94,7 @@ export function Likes({ activeDogId, initialSubTab, onOpenConnection }: {
       const connCards = await Promise.all(visible.map(async (c) => ({
         key: c.id, connectionId: c.id, name: c.otherDogName,
         subtitle: `${c.status.toLowerCase()}${c.archived ? " · archived" : ""}`,
-        imageUrl: c.otherDogCoverPath ? await candidatePhotoUrl(activeDogId, c.otherDogCoverPath) : "",
+        imageUrl: c.otherDogCoverPath ? await candidatePhotoUrl(activeDogId, c.otherDogCoverPath, 128) : "",
       })));
       setConnections(connCards);
       setState("ready");

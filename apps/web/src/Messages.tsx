@@ -25,7 +25,7 @@ export function Messages({ activeDogId, openConnectionId, onOpened }: {
       const next: Record<string, string> = {};
       await Promise.all(rows.map(async (r) => {
         if (!activeDogId || !r.otherDogCoverPath || urls[r.connectionId]) return;
-        next[r.connectionId] = await candidatePhotoUrl(activeDogId, r.otherDogCoverPath);
+        next[r.connectionId] = await candidatePhotoUrl(activeDogId, r.otherDogCoverPath, 128);
       }));
       setUrls((prev) => ({ ...prev, ...next }));
     } catch { setConversations([]); }
