@@ -83,7 +83,7 @@ delete-for-me chat, public photo bucket, trigger-driven notifications.
 1. Legal ToS/Privacy text (owner/lawyer)
 2. Domain purchase + Resend domain verification (real email delivery)
 3. Set cooldown to 10080 min in admin when testing ends
-4. Optional: admin app hosting (currently localhost-only; deployed to https://match.abenaga.com/admin), notification preferences
+4. Admin app deployed at https://match.abenaga.com/admin; notification preferences
 
 ## P2 (explicitly out of scope)
 
