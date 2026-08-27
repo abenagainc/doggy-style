@@ -5,6 +5,7 @@ interface Report { id: string; reason: string; details: string | null; status: s
 interface OwnerRow { owner_id: string; display_name: string | null; dog_count: number; verification: string; created_at: string; is_staff: boolean }
 interface OwnerFullRow { owner_id: string; email: string; display_name: string | null; dog_count: number; active_dog_count: number; verification: string; is_active: boolean; created_at: string; is_staff: boolean }
 interface BlockRow { blocker_owner_id: string; blocked_owner_id: string; created_at: string }
+interface OrphanRow { id: string; email: string | null; created_at: string }
 interface VerificationRow { id: string; owner_id: string; display_name: string | null; storage_path: string; note: string | null; submitted_at: string }
 interface DogRow { id: string; owner_id: string; owner_display_name: string | null; name: string; sex: string; date_of_birth: string; breed: string; location: string | null; breeding_enabled: boolean; profile_status: string; availability_status: string; archived_at: string | null; created_at: string }
 type Stats = Record<string, number>;
@@ -31,6 +32,7 @@ export function Admin() {
   const [weightsNote, setWeightsNote] = useState<string | null>(null);
   const [editingDog, setEditingDog] = useState<DogRow | null>(null);
   const [editingOwner, setEditingOwner] = useState<OwnerFullRow | null>(null);
+  const [orphans, setOrphans] = useState<OrphanRow[] | null>(null);
 
   const WEIGHT_KEYS = [
     { key: "rank_weight_breed", label: "Breed match" },
@@ -213,6 +215,49 @@ export function Admin() {
 
   const signOut = () => void supabase.auth.signOut().then(() => setAuthState("signed-out"));
 
+  /** Fetch auth accounts that have no owners row (blocks re-registration). */
+  const loadOrphans = async () => {
+    setOrphans(null);
+    const { data: { session } } = await supabase.auth.getSession();
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-admin-delete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "list" }),
+      });
+      const body = await res.json();
+      if (!res.ok) { setNote(`Could not list orphaned accounts: ${body.error}`); setOrphans([]); return; }
+      setOrphans(body.orphans ?? []);
+    } catch {
+      setNote("Could not list orphaned accounts — network error.");
+      setOrphans([]);
+    }
+  };
+
+  const deleteOrphan = async (o: OrphanRow) => {
+    if (!confirm(`Permanently delete auth account ${o.email ?? o.id}? This frees the email for re-registration. Irreversible!`)) return;
+    setNote(null);
+    const { data: { session } } = await supabase.auth.getSession();
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-admin-delete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ user_id: o.id }),
+      });
+      const body = await res.json();
+      setNote(res.ok ? `Auth account ${o.email ?? o.id} deleted.` : `Delete failed: ${body.error}`);
+    } catch {
+      setNote("Delete failed — network error.");
+    }
+    await loadOrphans();
+  };
+
   if (authState === "loading") return <p style={{ padding: 24 }}>Loading…</p>;
 
   if (authState === "signed-out") {
@@ -380,6 +425,23 @@ export function Admin() {
                   </div>
                 </div>
               )}
+            </div>
+          ))}
+
+          <h2 style={{ marginTop: 28 }}>Orphaned auth accounts
+            <button style={{ marginLeft: 12 }} onClick={() => void loadOrphans()}>Scan</button>
+          </h2>
+          <p><small>Auth accounts with no user profile — usually left behind by deletions before the auth-cleanup fix. They block their email from being re-registered. Scan to find them, delete to free the email.</small></p>
+          {orphans === null ? <p style={{ color: "var(--ink-soft)" }}>Press Scan to check.</p> : orphans.length === 0 ? <p className={card} style={{ padding: 14 }}>No orphaned accounts. 🎉</p> : orphans.map((o) => (
+            <div key={o.id} className={card} style={{ padding: 14, marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <div>
+                  <strong>{o.email ?? "(no email)"}</strong>
+                  <br />
+                  <small>created {o.created_at ? new Date(o.created_at).toLocaleDateString() : "?"} • <code>{o.id}</code></small>
+                </div>
+                <button onClick={() => void deleteOrphan(o)} style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>Delete</button>
+              </div>
             </div>
           ))}
         </section>
