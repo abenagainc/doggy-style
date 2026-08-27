@@ -190,7 +190,24 @@ export function Admin() {
     setNote(null);
     const { error: err } = await supabase.rpc("admin_delete_owner", { p_owner_id: o.owner_id });
     if (err) { setNote(err.message); return; }
-    setNote(`Owner ${o.email} deleted.`);
+    // The owner row is gone; also delete the auth.users account so the email
+    // can be re-registered. Done via edge function (SQL can't touch auth).
+    const { data: { session } } = await supabase.auth.getSession();
+    let authWarn = "";
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-admin-delete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ user_id: o.owner_id }),
+      });
+      if (!res.ok) authWarn = ` (auth account not deleted: ${(await res.json()).error})`;
+    } catch {
+      authWarn = " (auth account not deleted — network error)";
+    }
+    setNote(`Owner ${o.email} deleted.${authWarn}`);
     await loadAll();
   };
 
