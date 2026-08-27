@@ -68,9 +68,21 @@ P0 + P1 feature-complete, verified by scripts/regression-check.mjs (12 live chec
 
 ## Admin capabilities (all staff-gated via is_staff())
 
-Reports triage · verification review queue · users list (verification override,
-deactivate) · blocks · stats · ranking-weight sliders (live) · cooldown setting ·
-danger-zone reset tools (per dog/owner wipe incl. cross-side notifications).
+Admin app is deployed at https://match.abenaga.com/admin (served from `/admin` path on the
+main domain; can be split into `admin.abenaga.com` subdomain later without code changes).
+
+- **Overview**: platform stats dashboard, re-interest cooldown editor, ranking-weight sliders
+- **Reports**: triage list with status updates (Open / In Review / Closed)
+- **Verifications**: pending submission queue with document viewer, approve/reject + reviewer notes
+- **Users**: full list with email, dog counts, verification status, staff badge; edit display name,
+  deactivate/reactivate owners, delete owners (only when no dogs exist)
+- **Dogs**: list all dogs with owner info; edit name/sex/DOB/breed/location/breeding-enabled,
+  archive/unarchive, delete (wipes all interests/passes/connections/messages)
+- **Blocks**: all blocks overview
+- **Danger zone**: reset matching data per dog or per owner (wipes all matching data for that entity)
+
+All admin writes go through security-definer RPCs — regular RLS policies are insufficient for
+cross-owner operations.
 
 ## Deliberate scope deviations
 
