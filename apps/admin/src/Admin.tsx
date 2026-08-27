@@ -322,27 +322,34 @@ export function Admin() {
 
       {tab === "users" && (
         <section>
-          <h2>All users</h2>
+          <h2>Danger zone — reset matching data</h2>
+          <p><small>Picks an owner or dog and wipes all their interests, passes, connections, chats and screening answers. For unsticking tests. Irreversible.</small></p>
+          <ResetTool owners={owners ?? []} onNote={setNote} onDone={() => void loadAll()} />
+          <h2 style={{ marginTop: 28 }}>All users</h2>
           {ownerFull === null ? <p>Loading…</p> : ownerFull.length === 0 ? <p className={card} style={{ padding: 14 }}>No users found.</p> : ownerFull.map((o) => (
             <div key={o.owner_id} className={card} style={{ padding: 14, marginBottom: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <div>
                   <strong>{o.display_name ?? "(no name)"}</strong>{" "}
-                  {o.is_staff && <span style={{ background: "var(--ink)", color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: "0.7rem" }}>STAFF</span>}
-                  <br />
+                  {o.is_staff && <span style={{ background: "var(--ink)", color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: "0.7rem" }}>STAFF</span>}{" "}
                   <small>{o.email}</small>
                   <br />
                   <small>
-                    {o.dog_count} dog{o.dog_count === 1 ? "" : "s"} · {o.active_dog_count} active · <span data-status={o.verification.toLowerCase()}>{o.verification.toLowerCase()}</span> · joined {new Date(o.created_at).toLocaleDateString()}
+                    {o.dog_count} dog{o.dog_count === 1 ? "" : "s"} · {o.active_dog_count} active · <span data-status={o.verification.toLowerCase()}>{o.verification.toLowerCase()}</span>
                   </small>
                   <br />
-                  <small style={{ display: "block" }}><code>{o.owner_id}</code></small>
+                  <small>joined {new Date(o.created_at).toLocaleDateString()} • <code>{o.owner_id}</code></small>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
                   <button onClick={() => setEditingOwner({ ...o, display_name: o.display_name ?? "" })}>Edit name</button>
-                  {o.dog_count === 0
-                    ? <button onClick={() => void deleteOwner(o)} style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>Delete account</button>
-                    : <small style={{ color: "var(--ink-soft)" }}>{o.dog_count} dogs — can't delete</small>}
+                  <select defaultValue="" onChange={(e) => { if (e.target.value) void setVerification(o.owner_id, e.target.value); e.currentTarget.selectedIndex = 0; }}>
+                    <option value="">Set verification…</option>
+                    {["NOT_STARTED", "PENDING", "APPROVED", "REJECTED"].map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  {o.dog_count > 0
+                    ? <button onClick={() => void setUserActive(o.owner_id, false)} style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>Deactivate (archive dogs + close connections)</button>
+                    : <button onClick={() => void setUserActive(o.owner_id, true)}>Reactivate</button>}
+                  {o.dog_count === 0 && <button onClick={() => void deleteOwner(o)} style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>Delete account</button>}
                 </div>
               </div>
               {editingOwner?.owner_id === o.owner_id && (
@@ -368,11 +375,7 @@ export function Admin() {
               <input type="checkbox"
                 checked={dogs === null || dogs.length === 0}
                 onChange={(e) => {
-                  if (e.target.checked) {
-                    void supabase.rpc("admin_list_dogs_full", { p_archived: false }).then(({ data }) => setDogs((data as DogRow[]) ?? []));
-                  } else {
-                    void supabase.rpc("admin_list_dogs_full", { p_archived: true }).then(({ data }) => setDogs((data as DogRow[]) ?? []));
-                  }
+                  void supabase.rpc("admin_list_dogs_full", { p_archived: e.target.checked }).then(({ data }) => setDogs((data as DogRow[]) ?? []));
                 }}
               /> Show archived</label>
           </h2>
@@ -426,6 +429,7 @@ export function Admin() {
   );
 }
 
+/** Admin decision widget: shows the document (signed URL) + approve/reject with note. */
 function DogEditForm({ dog, onSave, onCancel, onChange }: {
   dog: DogRow;
   onSave: () => void;
@@ -491,6 +495,80 @@ function VerificationDecision({ submissionId, storagePath, onDone }: { submissio
         <button disabled={busy} onClick={() => void decide("APPROVED")} style={{ borderColor: "var(--good)", color: "var(--good)" }}>Approve</button>
         <button disabled={busy} onClick={() => void decide("REJECTED")} style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>Reject</button>
       </div>
+    </div>
+  );
+}
+
+/** Admin danger-zone: reset matching data for a single owner or dog (for testing). */
+function ResetTool({ owners, onNote, onDone }: {
+  owners: OwnerRow[];
+  onNote: (note: string | null) => void;
+  onDone: () => void;
+}) {
+  const [mode, setMode] = useState<"owner" | "dog">("owner");
+  const [ownerId, setOwnerId] = useState("");
+  const [dogId, setDogId] = useState("");
+  const [dogs, setDogs] = useState<{ id: string; name: string; owner_id: string }[]>([]);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (mode !== "dog" || dogs.length > 0) return;
+    void supabase.rpc("admin_list_dogs").then(({ data }) => {
+      setDogs((data as { id: string; name: string; owner_id: string }[]) ?? []);
+    });
+  }, [mode, dogs.length]);
+
+  const run = async () => {
+    setBusy(true); onNote(null);
+    try {
+      if (mode === "owner") {
+        const { data, error: err } = await supabase.rpc("admin_reset_owner_matching", { p_owner_id: ownerId });
+        if (err) throw new Error(err.message);
+        onNote(`Owner reset complete: ${JSON.stringify(data)}`);
+      } else {
+        const { data, error: err } = await supabase.rpc("admin_reset_dog_matching", { p_dog_id: dogId });
+        if (err) throw new Error(err.message);
+        onNote(`Dog reset complete: ${JSON.stringify(data)}`);
+      }
+      setConfirming(false); setOwnerId(""); setDogId("");
+      onDone();
+    } catch (caught) {
+      onNote(caught instanceof Error ? caught.message : "Reset failed.");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className={card} style={{ padding: 14 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <button onClick={() => setMode("owner")} style={{ background: mode === "owner" ? "var(--ink)" : "#fff", color: mode === "owner" ? "#fff" : "var(--ink)" }}>By owner</button>
+        <button onClick={() => setMode("dog")} style={{ background: mode === "dog" ? "var(--ink)" : "#fff", color: mode === "dog" ? "#fff" : "var(--ink)" }}>By dog</button>
+      </div>
+      {mode === "owner" && (
+        <label>Owner
+          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+            <option value="">Choose…</option>
+            {owners.map((o) => <option key={o.owner_id} value={o.owner_id}>{o.display_name ?? o.owner_id.substring(0, 8)} ({o.dog_count} dogs)</option>)}
+          </select>
+        </label>
+      )}
+      {mode === "dog" && (
+        <label>Dog
+          <select value={dogId} onChange={(e) => setDogId(e.target.value)}>
+            <option value="">Choose…</option>
+            {dogs.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.owner_id.substring(0, 8)})</option>)}
+          </select>
+        </label>
+      )}
+      {!confirming ? (
+        <button disabled={busy || (mode === "owner" ? !ownerId : !dogId)} onClick={() => setConfirming(true)}>Reset…</button>
+      ) : (
+        <div style={{ marginTop: 8 }}>
+          <p role="alert">Irreversible: wipes interests, passes, connections, chats and screening answers for this {mode}. Continue?</p>
+          <button disabled={busy} onClick={() => void run()} style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>{busy ? "…" : "Yes, reset everything"}</button>{" "}
+          <button disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
+        </div>
+      )}
     </div>
   );
 }
