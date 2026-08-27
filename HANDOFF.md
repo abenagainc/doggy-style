@@ -48,6 +48,9 @@ P0 + P1 feature-complete, verified by scripts/regression-check.mjs (12 live chec
    owner's email until a domain is verified.
 8. **Dev servers die periodically** — if "can't be reached", relaunch; always use
    `--host 127.0.0.1`.
+9. **Auth errors are suppressed** — `auth.ts` `signUp`/`login` previously threw
+   generic messages ("We could not create your account." / "Email or password is
+   incorrect.") hiding the real Supabase error. Fixed to propagate `error.message`.
 
 ## Navigation structure (current, post-restructure)
 
